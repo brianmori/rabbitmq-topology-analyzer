@@ -1,0 +1,55 @@
+# Operating system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE and editor state
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+*.code-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*~
+
+# Python environments, caches, and build artifacts
+.venv/
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Node.js, pnpm, and frontend build artifacts
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+dist-ssr/
+vite.config.*.timestamp-*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+!.env.template
+*.local
+logs/
+*.log

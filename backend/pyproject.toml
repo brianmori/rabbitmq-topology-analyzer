@@ -1,0 +1,88 @@
+[project]
+name = "rabbitmq-topology-viewer-backend"
+version = "0.1.0"
+description = "FastAPI backend for the RabbitMQ topology visualization tool."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.1",
+    "pydantic>=2.13.4",
+    "python-multipart>=0.0.32",
+    "rabbitmq-management-sdk",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "ruff>=0.15.2,<1.0.0",
+    "pytest>=8.3",
+    "httpx>=0.27",  # needed for FastAPI's TestClient
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.mypy]
+mypy_path = "src"
+explicit_package_bases = true
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+target-version = "py314"
+required-version = ">=0.15.2,<1.0.0"
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # Pyflakes
+    "I", # import ordering
+    "B", # likely bugs
+    "C4", # unnecessary comprehensions
+    "UP", # modern Python syntax
+    "SIM", # simplifications
+    "TCH", # type-only imports
+    "ANN", # missing annotations
+    "PTH", # pathlib over os.path
+    "PL", # Pylint-quality rules
+    "RUF", # Ruff-specific rules
+    "TID", # import hygiene
+    "D", # docstrings
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["access", "analyses", "core", "definitions"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pylint]
+max-args = 8
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+"src/**/__init__.py" = ["D104"]
+"tests/**/*.py" = ["D", "PLR2004"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["src/main.py", "src/access", "src/analyses", "src/core", "src/definitions", "static"]
+sources = ["src"]
+
+[tool.uv.sources]
+rabbitmq-management-sdk = { path = "../../rabbitmq-management-sdk", editable = true }
