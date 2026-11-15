@@ -1,0 +1,37 @@
+name: 🧹 Task / Maintenance
+description: Internal chore, documentation update, refactoring, or test improvement
+title: "chore: "
+labels: ["type: chore"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Refactoring (refactor)
+        - Documentation (docs)
+        - Testing (test)
+        - Chore / Build System (chore)
+        - Performance Internal Tuning (perf)
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What needs to be done and why?
+      placeholder: Describe the technical debt, missing tests, or doc updates...
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Key Action Items / Scope
+      description: List specific files, packages, or components affected.
+      placeholder: |
+        - [ ] Update README examples
+        - [ ] Add unit tests for internal parser
+    validations:
+      required: false

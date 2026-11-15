@@ -1,0 +1,42 @@
+name: 🐛 Bug Report
+description: Report broken functionality or unexpected behavior
+title: "fix: "
+labels: ["type: fix"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear summary of the bug.
+      placeholder: What failed or behaved unexpectedly?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps to trigger the bug.
+      placeholder: |
+        1. Open the application.
+        2. Select '...' and click '...'.
+        3. Observe '...'.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs Actual Behavior
+      description: What should have happened versus what actually occurred.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Application version, browser/version, OS/architecture, and deployment method.
+      placeholder: e.g. app 1.0.0, Firefox <version>, Linux arm64, Docker
+    validations:
+      required: false

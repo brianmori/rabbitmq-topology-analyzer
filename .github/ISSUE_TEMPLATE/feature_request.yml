@@ -1,0 +1,30 @@
+name: ✨ Feature Request / Enhancement
+description: Suggest a new feature or performance improvement
+title: "feat: "
+labels: ["type: feat"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem or pain point does this solve?
+      placeholder: It is difficult or impossible to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Detailed description of the feature or performance improvement.
+      placeholder: Describe the expected application behavior or user interface...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any workaround or alternative solutions you evaluated.
+    validations:
+      required: false

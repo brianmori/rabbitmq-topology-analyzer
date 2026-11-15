@@ -1,0 +1,30 @@
+name: PR Title Semantic Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-title:
+    name: PR Title Check
+    runs-on: ubuntu-slim
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6
+        with:
+          # Custom list of allowed commit types
+          types: |
+            feat
+            fix
+            chore
+            docs
+            test
+            refactor
+            perf
+          # Require a scope e.g., feat(api): ...
+          requireScope: true
+          # Disable legacy [WIP] status writes; every title must meet the policy.
+          wip: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
