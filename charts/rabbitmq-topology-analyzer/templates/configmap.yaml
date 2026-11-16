@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "analyzer.fullname" . }}
+  labels:
+    {{- include "analyzer.labels" . | nindent 4 }}
+data:
+  RABBITMQ_DEPLOYMENT_MODE: production
+  RABBITMQ_AUTH_MODE: {{ .Values.auth.mode | quote }}
+  RABBITMQ_ANALYSIS_WORKERS: {{ .Values.analysis.workers | int64 | quote }}
+  RABBITMQ_ANALYSIS_QUEUE_CAPACITY: {{ .Values.analysis.queueCapacity | int64 | quote }}
+  RABBITMQ_ANALYSIS_HEARTBEAT_TTL_SECONDS: {{ .Values.analysis.heartbeatTtlSeconds | int64 | quote }}
+  RABBITMQ_ANALYSIS_RESULT_TTL_SECONDS: {{ .Values.analysis.resultTtlSeconds | int64 | quote }}
+  RABBITMQ_ANALYSIS_RESULTS_DIR: /var/lib/rabbitmq-topology/results
+  RABBITMQ_ANALYSIS_RESULTS_MAX_BYTES: {{ .Values.storage.resultsMaxBytes | int64 | quote }}
+  RABBITMQ_CAPTURE_MAX_UPLOAD_BYTES: {{ .Values.captures.maxUploadBytes | int64 | quote }}
+  RABBITMQ_SESSION_ANALYSIS_LIMIT: {{ .Values.captures.sessionLimit | int64 | quote }}
+  RABBITMQ_SESSION_ANALYSIS_GLOBAL_LIMIT: {{ .Values.captures.globalLimit | int64 | quote }}
+  RABBITMQ_SESSION_TOPOLOGY_TTL_SECONDS: {{ .Values.captures.topologyTtlSeconds | int64 | quote }}
+  {{- if .Values.captures.existingClaim }}
+  RABBITMQ_FULL_EXPORT_DEFINITIONS_DIR: /captures
+  {{- end }}
+  {{- if ne .Values.auth.mode "none" }}
+  RABBITMQ_PUBLIC_ORIGIN: {{ include "analyzer.publicOrigin" . | quote }}
+  {{- end }}
+  {{- if eq .Values.auth.mode "basic" }}
+  RABBITMQ_BASIC_USERS_FILE: /run/secrets/rabbitmq-topology/users.json
+  RABBITMQ_BASIC_REALM: {{ .Values.auth.basic.realm | quote }}
+  RABBITMQ_BASIC_VERIFICATION_LIMIT: {{ .Values.auth.basic.verificationLimit | int64 | quote }}
+  {{- else if eq .Values.auth.mode "oidc" }}
+  RABBITMQ_OIDC_ISSUER: {{ .Values.auth.oidc.issuer | quote }}
+  {{- if .Values.auth.oidc.discoveryUrl }}
+  RABBITMQ_OIDC_DISCOVERY_URL: {{ .Values.auth.oidc.discoveryUrl | quote }}
+  {{- end }}
+  RABBITMQ_OIDC_CLIENT_ID: {{ .Values.auth.oidc.clientId | quote }}
+  RABBITMQ_OIDC_CLIENT_SECRET_FILE: /run/secrets/rabbitmq-topology/client-secret
+  RABBITMQ_OIDC_REDIRECT_URI: {{ printf "%s/api/auth/oidc/callback" (include "analyzer.publicOrigin" .) | quote }}
+  RABBITMQ_OIDC_ROLE_CLAIM: {{ .Values.auth.oidc.roleClaim | quote }}
+  RABBITMQ_OIDC_ROLE_MAPPING_FILE: /run/secrets/rabbitmq-topology/role-mapping.json
+  RABBITMQ_OIDC_SCOPES: {{ .Values.auth.oidc.scopes | quote }}
+  RABBITMQ_OIDC_ACCEPTED_ALGORITHMS: {{ .Values.auth.oidc.acceptedAlgorithms | quote }}
+  {{- end }}
