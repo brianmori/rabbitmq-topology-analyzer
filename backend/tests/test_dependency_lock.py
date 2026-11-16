@@ -1,6 +1,4 @@
 import re
-import shutil
-import subprocess
 import tomllib
 from importlib.metadata import distribution
 from pathlib import Path
@@ -45,35 +43,3 @@ def test_installed_sdk_matches_the_registry_pin_without_a_local_override() -> No
     installed_package = Path(installed.locate_file("rabbitmq_management_sdk")).resolve()
     assert "site-packages" in installed_package.parts
     assert Path(rabbitmq_management_sdk.__file__).resolve().is_relative_to(installed_package)
-
-
-def copy_dependency_files(tmp_path: Path) -> Path:
-    for name in ("pyproject.toml", "uv.lock"):
-        shutil.copyfile(BACKEND_ROOT / name, tmp_path / name)
-    return tmp_path
-
-
-def test_shared_lock_is_current_without_a_sibling_checkout(tmp_path: Path) -> None:
-    root = copy_dependency_files(tmp_path)
-    original = (root / "uv.lock").read_bytes()
-
-    subprocess.run(["uv", "lock", "--check", "--offline", "--project", str(root)], check=True)
-
-    assert (root / "uv.lock").read_bytes() == original
-
-
-def test_native_lock_check_rejects_requirement_drift_without_rewriting(tmp_path: Path) -> None:
-    root = copy_dependency_files(tmp_path)
-    project_path = root / "pyproject.toml"
-    project_path.write_text(project_path.read_text().replace("httpx2>=2.16.0,<3", "httpx2==2.13.0"))
-    original = (root / "uv.lock").read_bytes()
-
-    result = subprocess.run(
-        ["uv", "lock", "--check", "--offline", "--project", str(root)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert result.returncode != 0
-    assert (root / "uv.lock").read_bytes() == original

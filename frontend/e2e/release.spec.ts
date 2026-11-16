@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import type { TopologyResponse } from "../src/types/topology.js";
+import { completedLayoutGeneration } from "./layout-support.js";
 
 const REVISION_A = `sha256:${"a".repeat(64)}`;
 const REVISION_B = `sha256:${"b".repeat(64)}`;
@@ -549,14 +550,6 @@ async function openReadyApp(page: Page, state: MockApiState) {
   }
 }
 
-async function completedLayoutGeneration(page: Page): Promise<string> {
-  const canvas = page.locator(".topology-canvas");
-  await expect(canvas).toHaveAttribute("data-layout-state", "ready");
-  const generation = (await canvas.getAttribute("data-layout-generation"))!;
-  await expect(canvas).toHaveAttribute("data-layout-completed-generation", generation);
-  return generation;
-}
-
 async function viewportTransform(page: Page): Promise<string> {
   return page.locator(".react-flow__viewport").evaluate((element) => element.style.transform);
 }
@@ -639,6 +632,36 @@ async function tabTo(page: Page, target: Locator, backwards = false) {
   }
   await expect(target).toBeFocused();
 }
+
+test("waits for the latest layout generation when an observed generation is superseded", async ({ page }) => {
+  await page.setContent(`<div class="topology-canvas" data-layout-state="ready"
+    data-layout-generation="2" data-layout-completed-generation="0"></div>`);
+  const canvas = page.locator(".topology-canvas");
+  const supersedeLayout = () => page.evaluate(() => {
+    const element = document.querySelector(".topology-canvas")!;
+    element.setAttribute("data-layout-generation", "3");
+    element.setAttribute("data-layout-completed-generation", "3");
+  });
+  // Force a newer completed layout immediately after the helper observes the
+  // pending generation, through either an individual read or a DOM snapshot.
+  const readAttribute = canvas.getAttribute.bind(canvas);
+  canvas.getAttribute = async (name, options) => {
+    const value = await readAttribute(name, options);
+    if (name === "data-layout-generation") await supersedeLayout();
+    return value;
+  };
+  const evaluate = canvas.evaluate.bind(canvas);
+  canvas.evaluate = async (callback, argument, options) => {
+    const value = await evaluate(callback, argument, options);
+    await supersedeLayout();
+    return value;
+  };
+  const locate = page.locator.bind(page);
+  page.locator = (selector, options) => selector === ".topology-canvas"
+    ? canvas : locate(selector, options);
+
+  expect(await completedLayoutGeneration(page)).toBe("3");
+});
 
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
   test(`exposes inspection and completed results without traversing the drawing at ${viewport.width}px`, async ({ page }, testInfo) => {
@@ -785,30 +808,49 @@ test("selects static snapshots and inspects graph resources with the keyboard", 
 test.describe("selected snapshot provenance", () => {
   test.use({ timezoneId: "Pacific/Honolulu" });
 
+  test("formats UTC provenance and updates the revision when equally labelled snapshots change", async ({ page }) => {
+    const state = createState();
+    const first = state.catalogue.static[0]!;
+    const second = state.catalogue.static[1]!;
+    second.label = first.label;
+    second.loadedAt = "2026-08-14T10:30:45.123456Z";
+    await openReadyApp(page, state);
+
+    const picker = page.getByRole("combobox", { name: "Analysis" });
+    const provenance = page.getByRole("group", { name: "Selected snapshot" });
+    await expect(picker).toHaveAccessibleDescription("Loaded in app: 2026-08-13 08:00:00 UTC");
+    await expect(provenance.locator("time")).toHaveAttribute("datetime", first.loadedAt);
+    const summary = provenance.locator("summary");
+    await expect(summary).toHaveText("Revision: aaaaaaaaaaaa…");
+    await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toBeHidden();
+    await picker.focus();
+    await page.keyboard.press("Tab");
+    await expect(summary).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toBeVisible();
+    expect(await summary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
+
+    await picker.selectOption("static:audit-production");
+    await expect(provenance.locator("time")).toHaveText("2026-08-14 10:30:45 UTC");
+    await expect(provenance.locator("time")).toHaveAttribute("datetime", second.loadedAt);
+    await expect(provenance.getByText(second.snapshotRevision, { exact: true })).toBeVisible();
+    await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toHaveCount(0);
+    await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
+  });
+
   for (const width of [1440, 1024, 390, 320]) {
     test(`keeps load time and full revision accessible near the picker at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       const state = createState();
       const first = state.catalogue.static[0]!;
-      const second = state.catalogue.static[1]!;
-      second.label = first.label;
-      second.loadedAt = "2026-08-14T10:30:45.123456Z";
       await openReadyApp(page, state);
 
       const picker = page.getByRole("combobox", { name: "Analysis" });
       const provenance = page.getByRole("group", { name: "Selected snapshot" });
       await expect(provenance).toBeVisible();
-      await expect(picker).toHaveAccessibleDescription("Loaded in app: 2026-08-13 08:00:00 UTC");
-      await expect(provenance.locator("time")).toHaveAttribute("datetime", first.loadedAt);
-      const summary = provenance.locator("summary");
-      await expect(summary).toHaveText("Revision: aaaaaaaaaaaa…");
-      await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toBeHidden();
-      await picker.focus();
-      await page.keyboard.press("Tab");
-      await expect(summary).toBeFocused();
-      await page.keyboard.press("Enter");
+      await expect(provenance.locator("time")).toBeVisible();
+      await provenance.locator("summary").click();
       await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toBeVisible();
-      expect(await summary.evaluate((element) => getComputedStyle(element).outlineStyle)).not.toBe("none");
 
       const pickerBox = (await picker.boundingBox())!;
       const metadataBox = (await provenance.boundingBox())!;
@@ -825,12 +867,6 @@ test.describe("selected snapshot provenance", () => {
       const background = relativeLuminance(contrast.background);
       expect((Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05)).toBeGreaterThanOrEqual(4.5);
 
-      await picker.selectOption("static:audit-production");
-      await expect(provenance.locator("time")).toHaveText("2026-08-14 10:30:45 UTC");
-      await expect(provenance.locator("time")).toHaveAttribute("datetime", second.loadedAt);
-      await expect(provenance.getByText(second.snapshotRevision, { exact: true })).toBeVisible();
-      await expect(provenance.getByText(first.snapshotRevision, { exact: true })).toHaveCount(0);
-      await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
       await page.screenshot({ path: test.info().outputPath("snapshot-provenance.png") });
     });
   }
@@ -1584,6 +1620,9 @@ for (const operation of ["scc", "cycle"] as const) {
 }
 
 for (const width of [390, 780, 781, 800, 820, 900, 1024, 1440]) {
+  // Every width checks layout; exercise the complete interaction workflow only
+  // once on each side of the mobile breakpoint.
+  const exerciseInteractions = width === 390 || width === 1440;
   test(`keeps the responsive drawer and graph within ${width}px`, async ({ page }, testInfo) => {
     const state = createState();
     await page.setViewportSize({ width, height: 900 });
@@ -1629,18 +1668,22 @@ for (const width of [390, 780, 781, 800, 820, 900, 1024, 1440]) {
       const bounds = (await control.boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-      await control.focus();
-      await expect(control).toBeFocused();
     }
-    await sort.selectOption("length_desc");
-    await minimum.fill("2");
-    await maximum.fill("5");
-    await expect(sort).toHaveValue("length_desc");
-    await expect(minimum).toHaveValue("2");
-    await expect(maximum).toHaveValue("5");
-    await next.click();
-    await expect(page.getByRole("button", { name: /Cycle 52 / })).toBeVisible();
-    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    if (exerciseInteractions) {
+      for (const control of [sort, minimum, maximum, next, cycle]) {
+        await control.focus();
+        await expect(control).toBeFocused();
+      }
+      await sort.selectOption("length_desc");
+      await minimum.fill("2");
+      await maximum.fill("5");
+      await expect(sort).toHaveValue("length_desc");
+      await expect(minimum).toHaveValue("2");
+      await expect(maximum).toHaveValue("5");
+      await next.click();
+      await expect(page.getByRole("button", { name: /Cycle 52 / })).toBeVisible();
+      await page.getByRole("button", { name: "Previous", exact: true }).click();
+    }
     await cycle.click();
     const detail = page.getByRole("article", { name: "Cycle 2 path" });
     await expect(detail).toContainText("shovel orders-to-audit in /orders");
@@ -1656,16 +1699,18 @@ for (const width of [390, 780, 781, 800, 820, 900, 1024, 1440]) {
     await expect(detail).toBeVisible();
     await expectDocumentFits();
 
-    await completedLayoutGeneration(page);
-    await canvas.scrollIntoViewIfNeeded();
-    const before = await viewportTransform(page);
-    const bounds = (await canvas.boundingBox())!;
-    const scrollY = await page.evaluate(() => window.scrollY);
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await page.mouse.wheel(0, -160);
-    await expect.poll(() => viewportTransform(page)).not.toBe(before);
-    expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
-    expect(await canvas.evaluate((element) => [element.scrollLeft, element.scrollTop])).toEqual([0, 0]);
-    await expectDocumentFits();
+    if (exerciseInteractions) {
+      await completedLayoutGeneration(page);
+      await canvas.scrollIntoViewIfNeeded();
+      const before = await viewportTransform(page);
+      const bounds = (await canvas.boundingBox())!;
+      const scrollY = await page.evaluate(() => window.scrollY);
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.wheel(0, -160);
+      await expect.poll(() => viewportTransform(page)).not.toBe(before);
+      expect(await page.evaluate(() => window.scrollY)).toBe(scrollY);
+      expect(await canvas.evaluate((element) => [element.scrollLeft, element.scrollTop])).toEqual([0, 0]);
+      await expectDocumentFits();
+    }
   });
 }

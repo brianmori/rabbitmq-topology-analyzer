@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Page, type Route } from "@playwright/t
 import { readFile, writeFile } from "node:fs/promises";
 import { cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
+import { completedLayoutGeneration } from "../e2e/layout-support.js";
 
 interface TopologyNode {
   id: string;
@@ -169,14 +170,6 @@ async function readCgroupLimit(path: string): Promise<string | null> {
   }
 }
 
-async function waitForLayout(page: Page) {
-  const canvas = page.locator(".topology-canvas");
-  await expect(canvas).toHaveAttribute("data-layout-state", "ready");
-  const generation = (await canvas.getAttribute("data-layout-generation"))!;
-  await expect(canvas).toHaveAttribute("data-layout-completed-generation", generation);
-  return generation;
-}
-
 async function expectWholeDrawingFits(page: Page) {
   await expect.poll(() => page.locator(".topology-canvas").evaluate((canvas) => {
     const bounds = canvas.getBoundingClientRect();
@@ -200,7 +193,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
     await page.setViewportSize(viewport);
     await page.route("**/api/**", (route) => fulfillApi(route, fixture));
     await page.goto("/");
-    const generation = await waitForLayout(page);
+    const generation = await completedLayoutGeneration(page);
     await expect(page.locator(".vhost-group")).toHaveCount(50);
     await expect(page.locator(".resource-node")).toHaveCount(600);
     await expectWholeDrawingFits(page);
@@ -209,12 +202,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
     await page.getByRole("button", { name: /zoom in/i }).click();
     await page.getByRole("button", { name: "Fit view", exact: true }).click();
     await expectWholeDrawingFits(page);
-    expect(await waitForLayout(page)).toBe(generation);
+    expect(await completedLayoutGeneration(page)).toBe(generation);
     expect(await page.locator(".react-flow__node").evaluateAll((nodes) =>
       nodes.map((node) => (node as HTMLElement).style.transform))).toEqual(positions);
     await page.getByRole("button", { name: "Reset layout" }).click();
     await expect(page.locator(".topology-canvas")).not.toHaveAttribute("data-layout-generation", generation);
-    await waitForLayout(page);
+    await completedLayoutGeneration(page);
     await expectWholeDrawingFits(page);
     await page.screenshot({ path: testInfo.outputPath("whole-drawing-fit.png") });
   });
@@ -228,7 +221,7 @@ test("chooses repeated queue names by vhost using the keyboard without relayout 
     return fulfillApi(route, fixture);
   });
   await page.goto("/");
-  const generation = await waitForLayout(page);
+  const generation = await completedLayoutGeneration(page);
   const search = page.getByRole("searchbox", { name: "Resource name" });
   await search.focus();
   await page.keyboard.type("QUEUE-00");
@@ -253,16 +246,16 @@ test("chooses repeated queue names by vhost using the keyboard without relayout 
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("Enter");
   await expect(details.getByText("vhost-38", { exact: true })).toBeVisible();
-  expect(await waitForLayout(page)).toBe(generation);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
   await expect(page.locator(".resource-node")).toHaveCount(600);
   await page.getByRole("checkbox", { name: "vhost-38", exact: true }).focus();
   await page.keyboard.press("Space");
-  await waitForLayout(page);
+  await completedLayoutGeneration(page);
   await expect(details.getByText("vhost-38", { exact: true })).toHaveCount(0);
   await expect(matches.getByRole("button", { pressed: true })).toHaveCount(0);
   expect(topologyRequests).toBe(1);
   // Only the explicit visibility change creates a new generation.
-  expect(Number(await waitForLayout(page))).toBe(Number(generation) + 1);
+  expect(Number(await completedLayoutGeneration(page))).toBe(Number(generation) + 1);
 });
 
 test("production Chromium full and filtered ELK layouts meet the v1 budget", async ({
