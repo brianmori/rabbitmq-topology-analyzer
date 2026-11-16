@@ -1,0 +1,42 @@
+{
+  "users": [],
+  "vhosts": [
+    { "name": "topology-demo.control" },
+    { "name": "topology-demo.region-a" },
+    { "name": "topology-demo.region-b" },
+    { "name": "topology-demo.region-c" }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "global_parameters": [],
+  "policies": [],
+  "queues": [
+    { "name": "shovel3.q", "vhost": "topology-demo.region-a", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } },
+    { "name": "shovel3.q", "vhost": "topology-demo.region-b", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } },
+    { "name": "shovel3.q", "vhost": "topology-demo.region-c", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic" } }
+  ],
+  "exchanges": [
+    { "name": "shovel3.in", "vhost": "topology-demo.region-a", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "shovel3.in", "vhost": "topology-demo.region-b", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "shovel3.in", "vhost": "topology-demo.region-c", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "bindings": [
+    { "source": "shovel3.in", "vhost": "topology-demo.region-a", "destination": "shovel3.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "shovel3.in", "vhost": "topology-demo.region-b", "destination": "shovel3.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "shovel3.in", "vhost": "topology-demo.region-c", "destination": "shovel3.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} }
+  ],
+  "parameters": [
+    { "component": "shovel", "name": "shovel3.ab", "vhost": "topology-demo.control", "value": {
+      "src-protocol": "amqp091", "src-uri": "amqp:///topology-demo.region-a", "src-queue": "shovel3.q",
+      "dest-protocol": "amqp091", "dest-uri": "amqp:///topology-demo.region-b", "dest-exchange": "shovel3.in", "ack-mode": "on-confirm"
+    } },
+    { "component": "shovel", "name": "shovel3.bc", "vhost": "topology-demo.control", "value": {
+      "src-protocol": "amqp091", "src-uri": "amqp:///topology-demo.region-b", "src-queue": "shovel3.q",
+      "dest-protocol": "amqp091", "dest-uri": "amqp:///topology-demo.region-c", "dest-exchange": "shovel3.in", "ack-mode": "on-confirm"
+    } },
+    { "component": "shovel", "name": "shovel3.ca", "vhost": "topology-demo.control", "value": {
+      "src-protocol": "amqp091", "src-uri": "amqp:///topology-demo.region-c", "src-queue": "shovel3.q",
+      "dest-protocol": "amqp091", "dest-uri": "amqp:///topology-demo.region-a", "dest-exchange": "shovel3.in", "ack-mode": "on-confirm"
+    } }
+  ]
+}

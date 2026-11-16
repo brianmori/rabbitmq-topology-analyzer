@@ -55,6 +55,8 @@ lerna-debug.log*
 !*.env.example
 !*.env.template
 *.local
+*.local.yaml
+*.local.yml
 .npmrc
 .pypirc
 .netrc
@@ -84,3 +86,6 @@ logs/
 benchmarks/.artifacts/
 test-results/
 playwright-report/
+
+# Packaged Helm charts are generated release artifacts.
+/charts/**/*.tgz

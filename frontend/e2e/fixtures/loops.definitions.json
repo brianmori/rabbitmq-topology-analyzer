@@ -1,0 +1,41 @@
+{
+  "users": [],
+  "vhosts": [{ "name": "topology-demo.loops" }],
+  "permissions": [],
+  "topic_permissions": [],
+  "global_parameters": [],
+  "parameters": [],
+  "policies": [],
+  "queues": [
+    { "name": "dead-ae.q", "vhost": "topology-demo.loops", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic", "x-dead-letter-exchange": "dead-ae.entry" } },
+    { "name": "dead.a.q", "vhost": "topology-demo.loops", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic", "x-dead-letter-exchange": "dead.b" } },
+    { "name": "dead.b.q", "vhost": "topology-demo.loops", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic", "x-dead-letter-exchange": "dead.a" } },
+    { "name": "dead.self.q", "vhost": "topology-demo.loops", "durable": true, "auto_delete": false, "arguments": { "x-queue-type": "classic", "x-dead-letter-exchange": "dead.self" } }
+  ],
+  "exchanges": [
+    { "name": "alternate.a", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": { "alternate-exchange": "alternate.b" } },
+    { "name": "alternate.b", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": { "alternate-exchange": "alternate.a" } },
+    { "name": "binding.a", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "binding.b", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "binding.c", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "binding.self", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "dead-ae.entry", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": { "alternate-exchange": "dead-ae.fallback" } },
+    { "name": "dead-ae.fallback", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "dead.a", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "dead.b", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "dead.self", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} },
+    { "name": "mixed.a", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": { "alternate-exchange": "mixed.b" } },
+    { "name": "mixed.b", "vhost": "topology-demo.loops", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
+  ],
+  "bindings": [
+    { "source": "binding.a", "vhost": "topology-demo.loops", "destination": "binding.b", "destination_type": "exchange", "routing_key": "loop", "arguments": {} },
+    { "source": "binding.b", "vhost": "topology-demo.loops", "destination": "binding.c", "destination_type": "exchange", "routing_key": "loop", "arguments": {} },
+    { "source": "binding.c", "vhost": "topology-demo.loops", "destination": "binding.a", "destination_type": "exchange", "routing_key": "loop", "arguments": {} },
+    { "source": "binding.self", "vhost": "topology-demo.loops", "destination": "binding.self", "destination_type": "exchange", "routing_key": "loop", "arguments": {} },
+    { "source": "dead-ae.fallback", "vhost": "topology-demo.loops", "destination": "dead-ae.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "dead.a", "vhost": "topology-demo.loops", "destination": "dead.a.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "dead.b", "vhost": "topology-demo.loops", "destination": "dead.b.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "dead.self", "vhost": "topology-demo.loops", "destination": "dead.self.q", "destination_type": "queue", "routing_key": "loop", "arguments": {} },
+    { "source": "mixed.b", "vhost": "topology-demo.loops", "destination": "mixed.a", "destination_type": "exchange", "routing_key": "loop", "arguments": {} }
+  ]
+}

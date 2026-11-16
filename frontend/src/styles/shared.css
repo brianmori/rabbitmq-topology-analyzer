@@ -1,0 +1,111 @@
+/* Shared controls, text helpers, warnings, and the SCC palette used by graph and results. */
+
+.primary-button,
+.secondary-button,
+.operation-controls button {
+  min-height: 38px;
+  padding: 0.48rem 0.75rem;
+  font-weight: 700;
+  border-radius: 5px;
+}
+
+.primary-button {
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid #f18a64;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #a83d1a;
+}
+
+.secondary-button {
+  color: #f4f9fa;
+  background: transparent;
+  border: 1px solid #78939c;
+}
+
+.field-hint,
+.muted {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.field-hint {
+  margin: 0.35rem 0 0;
+}
+
+.text-button {
+  padding: 0;
+  color: #0b667e;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.checkbox-list {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.checkbox-list--scrollable {
+  max-height: 134px;
+  padding-right: 0.3rem;
+  overflow-y: auto;
+}
+
+.checkbox-list label {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  color: #34464e;
+  font-size: 0.8rem;
+}
+
+.checkbox-list input {
+  width: 16px;
+  height: 16px;
+  margin: 0.08rem 0 0;
+  accent-color: var(--brand);
+}
+
+.field-error,
+.result-warning {
+  margin: 0.4rem 0;
+  color: #7c341d;
+  font-size: 0.73rem;
+}
+
+.result-warning {
+  padding: 0.45rem 0.55rem;
+  background: #fff4e7;
+  border-left: 3px solid #b85b2f;
+}
+
+.scc-tone-0 {
+  --scc-color: #166f8f;
+}
+
+.scc-tone-1 {
+  --scc-color: #9a4c35;
+}
+
+.scc-tone-2 {
+  --scc-color: #5d6e1f;
+}
+
+.scc-tone-3 {
+  --scc-color: #755381;
+}
+
+.scc-tone-4 {
+  --scc-color: #9b5f2f;
+}
+
+.scc-tone-5 {
+  --scc-color: #286b62;
+}

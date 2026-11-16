@@ -1,0 +1,55 @@
+{
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "global_parameters": [
+    {
+      "name": "internal_cluster_id",
+      "value": "cluster-e2e-cycle"
+    },
+    {
+      "name": "cluster_name",
+      "value": "E2E cycle broker"
+    }
+  ],
+  "parameters": [],
+  "policies": [],
+  "queues": [
+    {
+      "name": "loop-q",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "classic",
+        "x-dead-letter-exchange": "loop-x"
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "loop-x",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "loop-x",
+      "vhost": "/",
+      "destination": "loop-q",
+      "destination_type": "queue",
+      "routing_key": "loop",
+      "arguments": {}
+    }
+  ]
+}

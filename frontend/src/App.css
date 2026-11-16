@@ -1,0 +1,7 @@
+/* Load shared styles before feature styles; keep this order explicit. */
+@import "./styles/shared.css";
+@import "./styles/shell.css";
+@import "./styles/sidebar.css";
+@import "./styles/graph.css";
+@import "./styles/results.css";
+@import "./styles/capture.css";

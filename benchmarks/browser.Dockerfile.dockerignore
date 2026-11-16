@@ -1,0 +1,28 @@
+# The benchmark builds the frontend and type-checks its referenced test tooling.
+# Only its generated SDK topology fixture is admitted from local artifacts.
+**
+!frontend/package.json
+!frontend/pnpm-lock.yaml
+!frontend/pnpm-workspace.yaml
+!frontend/index.html
+!frontend/tsconfig.json
+!frontend/tsconfig.app.json
+!frontend/tsconfig.node.json
+!frontend/tsconfig.benchmarks.json
+!frontend/vite.config.ts
+!frontend/vitest.config.ts
+!frontend/playwright.benchmark.config.ts
+!frontend/playwright.e2e.config.ts
+!frontend/src/**/*.ts
+!frontend/src/**/*.tsx
+!frontend/src/**/*.css
+!frontend/src/assets/react.svg
+!frontend/src/assets/vite.svg
+!frontend/src/assets/hero.png
+!frontend/public/favicon.svg
+!frontend/public/icons.svg
+!frontend/benchmarks/**/*.ts
+!frontend/e2e/**/*.ts
+!benchmarks/.artifacts/representative-topology.json
+**/.auth/**
+**/secrets/**
