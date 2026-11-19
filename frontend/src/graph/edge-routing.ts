@@ -1,5 +1,4 @@
-import type { TopologyEdge } from "../types/topology";
-import { RESOURCE_HEIGHT, RESOURCE_WIDTH, type LayoutItem } from "./layout";
+import { RESOURCE_HEIGHT, RESOURCE_WIDTH, type LayoutEdgeInput, type LayoutItem } from "./layout";
 import { compareUnicodeCodePoints } from "./presentation";
 import {
   paddedObstacles, pathHitsObstacle, pathHugsBorder, pathsShareLane, routeAroundObstacles, simplifyPoints,
@@ -12,6 +11,7 @@ export interface EdgeRouting {
   side: -1 | 1;
   lane: number;
   points?: ReadonlyArray<Point>;
+  elkHandles?: { source: Point; target: Point };
 }
 
 export interface Point {
@@ -35,10 +35,11 @@ const INSPECTOR_PADDING = 14;
 
 /** Assign drawing lanes to wire IDs without changing graph membership or order. */
 export function createEdgeRouting(
-  edges: ReadonlyArray<TopologyEdge>,
+  edges: ReadonlyArray<LayoutEdgeInput>,
   items: ReadonlyArray<LayoutItem> = [],
+  elkPaths?: ReadonlyMap<string, ReadonlyArray<Point>>,
 ): ReadonlyMap<string, EdgeRouting> {
-  const pairs = new Map<string, TopologyEdge[]>();
+  const pairs = new Map<string, LayoutEdgeInput[]>();
   for (const edge of edges) {
     const endpoints = [edge.source, edge.target].sort(compareUnicodeCodePoints);
     const key = JSON.stringify(endpoints);
@@ -65,6 +66,21 @@ export function createEdgeRouting(
   // Reserve space using the completed compound layout, then retain these lane
   // assignments while live handles move during a drag.
   const positioned = absoluteItems(items);
+  if (elkPaths) {
+    for (const edge of edges) {
+      const points = elkPaths.get(edge.id);
+      const source = positioned.get(edge.source);
+      const target = positioned.get(edge.target);
+      if (points && source && target) {
+        routing.set(edge.id, {
+          ...routing.get(edge.id)!,
+          points,
+          elkHandles: { source: sourceHandle(source), target: targetHandle(target) },
+        });
+      }
+    }
+    return routing;
+  }
   const borders = [...positioned.values()].filter((item) => item.isGroup).map((item) => ({
     id: item.id, left: item.x, right: item.x + item.width, top: item.y, bottom: item.y + item.height,
   }));
@@ -73,7 +89,7 @@ export function createEdgeRouting(
       top: item.y + 8, bottom: item.y + 34 }
     : { id: item.id, left: item.x, right: item.x + item.width, top: item.y, bottom: item.y + item.height }));
   const reserved: RoutingPath[] = [];
-  const span = (edge: TopologyEdge) => {
+  const span = (edge: LayoutEdgeInput) => {
     const source = positioned.get(edge.source);
     const target = positioned.get(edge.target);
     return source && target ? Math.abs(source.x + source.width - target.x) + Math.abs(source.y - target.y) : 0;
@@ -85,8 +101,8 @@ export function createEdgeRouting(
     const source = positioned.get(edge.source);
     const target = positioned.get(edge.target);
     if (!source || !target) continue;
-    const start = { x: source.x + source.width + HANDLE_OUTSET, y: source.y + source.height / 2 };
-    const end = { x: target.x - HANDLE_OUTSET, y: target.y + target.height / 2 };
+    const start = sourceHandle(source);
+    const end = targetHandle(target);
     let route = routing.get(edge.id)!;
     let geometry = routedEdgeGeometry(start, end, route);
     const forward = [start, { x: (start.x + end.x) / 2, y: start.y },
@@ -115,12 +131,31 @@ export function createEdgeRouting(
   return routing;
 }
 
-function absoluteItems(items: ReadonlyArray<LayoutItem>): ReadonlyMap<string, LayoutItem> {
+function sourceHandle(node: LayoutItem): Point {
+  return { x: node.x + node.width + HANDLE_OUTSET, y: node.y + node.height / 2 };
+}
+
+function targetHandle(node: LayoutItem): Point {
+  return { x: node.x - HANDLE_OUTSET, y: node.y + node.height / 2 };
+}
+
+export function absoluteItems(items: ReadonlyArray<LayoutItem>): ReadonlyMap<string, LayoutItem> {
   const byId = new Map(items.map((item) => [item.id, item]));
   return new Map(items.map((item) => {
     const parent = item.parentId ? byId.get(item.parentId) : undefined;
     return [item.id, { ...item, x: item.x + (parent?.x ?? 0), y: item.y + (parent?.y ?? 0) }];
   }));
+}
+
+export function edgeDrawingPoints(source: LayoutItem, target: LayoutItem, routing: EdgeRouting) {
+  const start = sourceHandle(source);
+  const end = targetHandle(target);
+  const handles = routing.elkHandles;
+  if (routing.points && handles && start.x === handles.source.x && start.y === handles.source.y &&
+      end.x === handles.target.x && end.y === handles.target.y) return routing.points;
+  const midX = (start.x + end.x) / 2;
+  return routedEdgeGeometry(start, end, routing)?.points ??
+    [start, { x: midX, y: start.y }, { x: midX, y: end.y }, end];
 }
 
 function toward(point: Point, destination: Point, distance: number): Point {
@@ -182,6 +217,20 @@ export function routedEdgeGeometry(
     const points = routing.points;
     const originalSource = points[0]!;
     const originalTarget = points.at(-1)!;
+    if (routing.elkHandles) {
+      // ELK assigns each relationship its own port. Translate those anchors
+      // by the live React Flow handle displacement when resources are dragged.
+      const dx = source.x - routing.elkHandles.source.x;
+      const dy = source.y - routing.elkHandles.source.y;
+      source = { x: originalSource.x + dx, y: originalSource.y + dy };
+      target = {
+        x: originalTarget.x + (target.x - routing.elkHandles.target.x),
+        y: originalTarget.y + (target.y - routing.elkHandles.target.y),
+      };
+      if (routing.selfLoop) {
+        return geometryFromPoints(points.map((point) => ({ x: point.x + dx, y: point.y + dy })));
+      }
+    }
     if (source.x === originalSource.x && source.y === originalSource.y &&
       target.x === originalTarget.x && target.y === originalTarget.y) return geometryFromPoints(points);
     // Extend the existing approach channels to moved handles. Moving an entire
@@ -251,7 +300,7 @@ export function routedEdgeGeometry(
 /** Include routed paths and inspector hit areas when framing a completed layout. */
 export function drawingBounds(
   items: ReadonlyArray<LayoutItem>,
-  edges: ReadonlyArray<TopologyEdge>,
+  edges: ReadonlyArray<LayoutEdgeInput>,
   routing: ReadonlyMap<string, EdgeRouting>,
 ): { x: number; y: number; width: number; height: number } {
   const byId = absoluteItems(items);
@@ -273,12 +322,9 @@ export function drawingBounds(
     const source = byId.get(edge.source);
     const target = byId.get(edge.target);
     if (!source || !target) continue;
-    const geometry = routedEdgeGeometry(
-      { x: source.x + source.width + HANDLE_OUTSET, y: source.y + source.height / 2 },
-      { x: target.x - HANDLE_OUTSET, y: target.y + target.height / 2 },
-      routing.get(edge.id)!,
-    );
-    for (const point of geometry?.points ?? []) include(point, INSPECTOR_PADDING);
+    for (const point of edgeDrawingPoints(source, target, routing.get(edge.id)!)) {
+      include(point, INSPECTOR_PADDING);
+    }
   }
   return items.length === 0
     ? { x: 0, y: 0, width: 0, height: 0 }

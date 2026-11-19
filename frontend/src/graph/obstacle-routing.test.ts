@@ -45,6 +45,21 @@ describe("simple relationship paths", () => {
     }
   });
 
+  it("avoids a nearby reserved run in the neighboring bucket across zero", () => {
+    const source = { x: 0, y: -0.5 };
+    const target = { x: 240, y: -0.5 };
+    const points = routeAroundObstacles(source, target, "a", "b", [], [source, target], [{
+      sourceId: "c",
+      targetId: "d",
+      points: [{ x: 48, y: 0.5 }, { x: 192, y: 0.5 }],
+    }], []);
+
+    expect(points).toEqual([
+      source, { x: 48, y: -0.5 }, { x: 48, y: -23.5 },
+      { x: 192, y: -23.5 }, { x: 192, y: -0.5 }, target,
+    ]);
+  });
+
   it("uses a single return channel instead of stairs when the channel is clear", () => {
     const source = { x: 524.5, y: 95 };
     const target = { x: 19.5, y: 95 };

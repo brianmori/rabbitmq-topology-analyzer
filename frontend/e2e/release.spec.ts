@@ -757,6 +757,19 @@ test("puts the initial narrow-screen graph and capture evidence within reach", a
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Open inspection", exact: true })).toBeFocused();
   expect(await intersectsScreen()).toBe(true);
+  // A return can be activated before the browser delivers the opening
+  // disclosure's asynchronous toggle event.
+  const opened = await disclosure.evaluate((summary) => {
+    const controls = summary.closest("details")!;
+    (summary as HTMLElement).click();
+    const opened = controls.open;
+    controls.querySelector<HTMLButtonElement>(".operations-sidebar .text-button")!.click();
+    return opened;
+  });
+  expect(opened).toBe(true);
+  await expect(disclosure.locator("..")).not.toHaveAttribute("open");
+  await expect(page.getByRole("button", { name: "Open inspection", exact: true })).toBeFocused();
+  expect(await intersectsScreen()).toBe(true);
   const transform = await viewportTransform(page);
   await panCanvas(page);
   await expect.poll(() => viewportTransform(page)).not.toBe(transform);
@@ -1619,7 +1632,7 @@ for (const operation of ["scc", "cycle"] as const) {
   });
 }
 
-for (const width of [390, 780, 781, 800, 820, 900, 1024, 1440]) {
+for (const width of [320, 390, 780, 781, 800, 820, 900, 1024, 1440]) {
   // Every width checks layout; exercise the complete interaction workflow only
   // once on each side of the mobile breakpoint.
   const exerciseInteractions = width === 390 || width === 1440;
@@ -1638,6 +1651,11 @@ for (const width of [390, 780, 781, 800, 820, 900, 1024, 1440]) {
       ))).toBeLessThanOrEqual(width);
       await expect(canvas).toHaveCSS("overflow", "hidden");
       expect((await canvas.boundingBox())!.width).toBeLessThanOrEqual(width);
+      const tabs = drawer.getByRole("tablist");
+      if (await tabs.count()) {
+        await expect.poll(() => tabs.evaluate((element) => element.scrollWidth - element.clientWidth))
+          .toBeLessThanOrEqual(0);
+      }
     };
 
     await expect(toggle).toHaveAttribute("aria-expanded", "true");

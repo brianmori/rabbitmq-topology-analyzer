@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
+import { completedLayoutGeneration } from "./layout-support.js";
 
 const cyclicDefinitions = resolve(import.meta.dirname, "fixtures/static/cycle.definitions.json");
 
@@ -155,6 +156,103 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   const component = results.getByRole("checkbox", { name: /Cyclic component 1/ });
   await component.check();
   await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
+});
+
+test("explores a large upload without mounting the entire graph", async ({ page }) => {
+  const capture = JSON.parse(await readFile(cyclicDefinitions, "utf8"));
+  const queue = capture.queues[0];
+  capture.queues.push(...Array.from({ length: 1_500 }, (_, index) => ({
+    ...queue, name: `bulk-queue-${index}`, arguments: { "x-queue-type": "classic" },
+  })));
+  capture.bindings.push({ ...capture.bindings[0], routing_key: "loop-second" });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Upload capture" }).click();
+  const dialog = page.getByRole("dialog", { name: "Manage captured analysis" });
+  await dialog.getByLabel("Analysis ID").fill("large-layout");
+  await dialog.getByLabel("Definitions export").setInputFiles({
+    name: "large-layout.definitions.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(capture)),
+  });
+  await dialog.getByRole("button", { name: "Upload capture" }).click();
+  await expect(dialog.getByText("Uploaded large-layout.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas).toHaveAttribute("data-layout-node-count", "1502");
+  const generation = await completedLayoutGeneration(page);
+  await expect(canvas.locator(".large-graph-overview")).toBeVisible();
+  await expect(canvas.locator(".resource-node")).toHaveCount(0);
+  const overviewBindings = canvas.locator(".large-graph-overview .topology-edge--binding");
+  const overviewBeforeDrag = (await overviewBindings.getAttribute("d"))!;
+  const search = page.getByRole("searchbox", { name: "Resource name" });
+  await search.fill("loop-q");
+  const queueCard = canvas.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await expect(queueCard).toBeVisible();
+  await expect(canvas.locator(".large-graph-overview")).toHaveCount(0);
+  expect(await canvas.locator(".resource-node").count()).toBeLessThan(100);
+
+  const bindings = canvas.locator(".react-flow__edge .topology-edge--binding");
+  const bindingPaths = () => bindings.evaluateAll(
+    (edges) => edges.map((edge) => [edge.id, edge.getAttribute("d")] as const),
+  );
+  const paths = new Map(await bindingPaths());
+  expect(paths.size).toBe(2);
+  expect(new Set(paths.values()).size).toBe(2);
+
+  await canvas.scrollIntoViewIfNeeded();
+  const viewport = canvas.locator(".react-flow__viewport");
+  const transform = await viewport.evaluate((element) => element.style.transform);
+  const queuePosition = () => queueCard.evaluate((card) => {
+    const node = card.closest<HTMLElement>(".react-flow__node")!;
+    const { m41: x, m42: y } = new DOMMatrixReadOnly(node.style.transform);
+    return { x, y };
+  });
+  const start = await queuePosition();
+  const before = (await queueCard.boundingBox())!;
+  const pointer = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
+  expect(await queueCard.evaluate((card, { x, y }) => card.contains(document.elementFromPoint(x, y)), pointer))
+    .toBe(true);
+  await page.mouse.move(pointer.x, pointer.y);
+  await page.mouse.down();
+  await page.mouse.move(pointer.x + 29, pointer.y + 23, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => (await queuePosition()).x - start.x).toBeGreaterThan(10);
+  await expect.poll(async () => {
+    const movedPaths = await bindingPaths();
+    return movedPaths.length === 2 && movedPaths.every(([id, path]) => paths.has(id) && path !== paths.get(id));
+  }).toBe(true);
+  const { x: movedX, y: movedY } = await queuePosition();
+  const queueHeight = await queueCard.evaluate((card) => (card as HTMLElement).offsetHeight);
+  for (const [, path] of await bindingPaths()) {
+    // Routed paths end with a line command to the target port. Read the
+    // coordinates directly for the very tall compound layout in this fixture.
+    const [x, y] = path!.slice(path!.lastIndexOf("L") + 1).split(" ").map(Number);
+    expect(Math.abs(x! - movedX)).toBeLessThan(1);
+    expect(y).toBeGreaterThan(movedY);
+    expect(y).toBeLessThan(movedY + queueHeight);
+  }
+  expect(await viewport.evaluate((element) => element.style.transform)).toBe(transform);
+
+  const inspector = canvas.getByRole("button", { name: /Inspect binding.*routing key loop-second$/ });
+  await inspector.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("region", { name: "Safe details" }).getByText("loop-second", { exact: true }))
+    .toBeVisible();
+
+  // Search and the overview use the moved geometry while preserving layout.
+  await search.fill("LOOP-Q");
+  const cardWidth = await queueCard.evaluate((element) => (element as HTMLElement).offsetWidth);
+  const canvasWidth = await canvas.evaluate((element) => element.clientWidth);
+  await expect.poll(() => viewport.evaluate((element, { x, cardWidth, canvasWidth }) => {
+    const { m11: zoom, m41: translateX } = new DOMMatrixReadOnly(element.style.transform);
+    return Math.abs((x + cardWidth / 2) * zoom + translateX - canvasWidth / 2);
+  }, { x: movedX, cardWidth, canvasWidth })).toBeLessThan(3);
+  await page.getByRole("button", { name: "Fit view", exact: true }).click();
+  await expect(canvas.locator(".large-graph-overview")).toBeVisible();
+  await expect(overviewBindings).not.toHaveAttribute("d", overviewBeforeDrag);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
 });
 
 async function expectClearRoutes(page: Page) {
@@ -417,6 +515,74 @@ test("explains focused scope and restores exploration while retaining real SDK r
   await expect(page.locator(".cycle-summary-row")).toHaveCount(1);
   expect(topologyRequests).toBe(2);
 });
+
+for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 }]) {
+  test(`navigates between focused results and the visible drawing at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    let topologyRequests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/topology") topologyRequests += 1;
+    });
+    await page.goto("/");
+    await completedLayoutGeneration(page);
+    const disclosure = page.locator(".controls-disclosure");
+    if (viewport.width < 780) await disclosure.locator("summary").click();
+    await page.getByRole("button", { name: "Run cyclic components" }).click();
+    await page.getByRole("button", { name: "Open components", exact: true }).click();
+    const component = page.getByRole("checkbox", { name: /Cyclic component 1/ });
+    await component.check();
+    await expect(page.getByRole("region", { name: "Graph presentation" })).toContainText("Component focus");
+    await page.getByRole("button", { name: "Run structural cycles" }).click();
+    await page.getByRole("button", { name: "Open cycles", exact: true }).click();
+    const drawer = page.locator(".results-drawer");
+    await drawer.getByRole("button", { name: /Cycle 1 / }).click();
+    const path = drawer.getByRole("article", { name: "Cycle 1 path" });
+    await expect(path).toBeVisible();
+    await expect(page.getByRole("region", { name: "Graph presentation" })).toContainText("Cycle 1 focus");
+    const generation = await completedLayoutGeneration(page);
+    const graph = page.locator(".topology-canvas");
+    const camera = graph.locator(".react-flow__viewport");
+    const transform = await camera.evaluate((element) => element.style.transform);
+    const graphControls = page.getByRole("navigation", { name: "Graph inspection and results" });
+    const graphEntry = graphControls.getByRole("button", { name: "Open inspection" });
+
+    await drawer.getByRole("button", { name: "Return to graph" }).click();
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    if (viewport.width < 780) await expect(disclosure).not.toHaveAttribute("open");
+
+    const openCycles = graphControls.getByRole("button", { name: "Cycles (1)", exact: true });
+    await openCycles.click();
+    const showCycle = path.getByRole("button", { name: "Show cycle on graph" });
+    await showCycle.focus();
+    await page.keyboard.press("Enter");
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    expect(await completedLayoutGeneration(page)).toBe(generation);
+    expect(await camera.evaluate((element) => element.style.transform)).toBe(transform);
+
+    await openCycles.click();
+    await path.getByRole("button", { name: "Clear cycle focus" }).click();
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    const mode = page.getByRole("region", { name: "Graph presentation" });
+    await expect(mode).toContainText("Component focus");
+    await expect(drawer.getByRole("button", { name: /Cycle 1 / })).toBeVisible();
+    await expect(path).toHaveCount(0);
+
+    const openComponents = graphControls.getByRole("button", { name: "Components (1)", exact: true });
+    await openComponents.click();
+    await expect(component).toBeChecked();
+    const clearComponent = drawer.getByRole("button", { name: "Clear component focus" });
+    await clearComponent.focus();
+    await page.keyboard.press("Enter");
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    await expect(mode).toContainText("Exploration view");
+    await expect(component).not.toBeChecked();
+    expect(topologyRequests).toBe(1);
+  });
+}
 
 for (const motion of ["reduce", "no-preference"] as const) {
   test(`inspects exact real-SDK parallel relationships and matching legend patterns (${motion})`, async ({ page }, testInfo) => {

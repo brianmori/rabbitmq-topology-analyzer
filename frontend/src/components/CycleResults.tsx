@@ -28,6 +28,7 @@ interface CycleResultsProps {
   onMaxLengthChange: (value: string) => void;
   onPageOffsetChange: (offset: number) => void;
   onSelectCycle: (cycleIndex: number) => void;
+  onShowGraph: () => void;
   onClearFocus: () => void;
 }
 
@@ -69,6 +70,7 @@ export function CycleResults({
   onMaxLengthChange,
   onPageOffsetChange,
   onSelectCycle,
+  onShowGraph,
   onClearFocus,
 }: CycleResultsProps) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -84,11 +86,6 @@ export function CycleResults({
             Exact SDK paths through configured possible hops; not proof of a runtime message loop.
           </p>
         </div>
-        {selectedDetail && (
-          <button type="button" className="text-button" onClick={onClearFocus}>
-            Clear cycle focus
-          </button>
-        )}
       </div>
 
       <p className="operation-status">{runStatusText}</p>
@@ -214,6 +211,14 @@ export function CycleResults({
           <p>
             {selectedDetail.length} hops across {selectedDetail.vhosts.join(", ")}
           </p>
+          <div className="cycle-detail-actions">
+            <button type="button" className="text-button" onClick={onShowGraph}>
+              Show cycle on graph
+            </button>
+            <button type="button" className="text-button" onClick={onClearFocus}>
+              Clear cycle focus
+            </button>
+          </div>
           <ol>
             {selectedDetail.edgeIds.map((edgeId, index) => {
               const sourceId = selectedDetail.nodeIds[index] ?? edgeById.get(edgeId)?.source ?? "";

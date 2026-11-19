@@ -28,7 +28,12 @@
   border-top: 1px solid var(--line);
 }
 
-.drawer-content [role="tablist"] { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.drawer-content [role="tablist"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
 .drawer-content [role="tab"] {
   padding: 0.45rem 0.6rem;
   color: var(--brand);
@@ -204,6 +209,12 @@
 .cycle-detail ol {
   margin: 0.4rem 0;
   padding-left: 1.25rem;
+}
+
+.cycle-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
 }
 
 .result-heading-row {

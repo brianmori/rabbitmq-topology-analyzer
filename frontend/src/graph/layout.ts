@@ -1,4 +1,5 @@
 import type { ElkExtendedEdge, ElkNode } from "elkjs/lib/elk-api.js";
+import type { EdgeRouting, Point } from "./edge-routing";
 import { compareUnicodeCodePoints, type VisibleTopology } from "./presentation";
 
 export interface LayoutResourceInput {
@@ -30,8 +31,24 @@ export interface LayoutItem {
   isGroup: boolean;
 }
 
+export interface DrawingLayout {
+  items: ReadonlyArray<LayoutItem>;
+  routing: ReadonlyMap<string, EdgeRouting>;
+  bounds: { x: number; y: number; width: number; height: number };
+}
+
+export type LayoutReply = { generation: number } & (
+  { layout: DrawingLayout } | { error: string }
+);
+
 export const RESOURCE_WIDTH = 220;
 export const RESOURCE_HEIGHT = 82;
+
+export function shouldReuseElkRoutes(nodeCount: number, edgeCount: number): boolean {
+  // The custom visibility search is useful for smaller drawings. Large
+  // drawings reuse the routes ELK already computes alongside node placement.
+  return nodeCount > 600 || edgeCount > 1_500;
+}
 
 export function vhostGroupId(vhost: string): string {
   return `vhost:${encodeURIComponent(vhost)}`;
@@ -85,6 +102,9 @@ export function createElkGraph(request: LayoutRequest): ElkNode {
     sources: [edge.source],
     targets: [edge.target],
   }));
+  if (shouldReuseElkRoutes(request.resources.length, request.edges.length)) {
+    addRoutingPorts(children, request.edges, edges);
+  }
   return {
     id: "topology-root",
     layoutOptions: {
@@ -99,6 +119,60 @@ export function createElkGraph(request: LayoutRequest): ElkNode {
     children,
     edges,
   };
+}
+
+function addRoutingPorts(
+  groups: ReadonlyArray<ElkNode>,
+  edges: LayoutRequest["edges"],
+  elkEdges: ReadonlyArray<ElkExtendedEdge>,
+) {
+  const nodeById = new Map(groups.flatMap((group) => group.children ?? []).map((node) => [node.id, node]));
+  const edgesByPair = new Map<string, number[]>();
+  edges.forEach((edge, index) => {
+    const key = JSON.stringify([edge.source, edge.target]);
+    const siblings = edgesByPair.get(key) ?? [];
+    siblings.push(index);
+    edgesByPair.set(key, siblings);
+  });
+  for (const siblings of edgesByPair.values()) {
+    siblings.forEach((index, lane) => {
+      const { id, source, target } = edges[index]!;
+      const y = 12 + (RESOURCE_HEIGHT - 24) * (lane + 1) / (siblings.length + 1);
+      const addPort = (nodeId: string, side: "EAST" | "WEST") => {
+        const node = nodeById.get(nodeId)!;
+        const portId = `${id}:${side}`;
+        node.layoutOptions ??= { "elk.portConstraints": "FIXED_POS" };
+        (node.ports ??= []).push({
+          id: portId,
+          x: side === "EAST" ? RESOURCE_WIDTH : 0,
+          y,
+          width: 0,
+          height: 0,
+          layoutOptions: { "elk.port.side": side },
+        });
+        return portId;
+      };
+      elkEdges[index]!.sources = [addPort(source, "EAST")];
+      elkEdges[index]!.targets = [addPort(target, "WEST")];
+    });
+  }
+}
+
+export function pathsFromElkGraph(graph: ElkNode): ReadonlyMap<string, ReadonlyArray<Point>> {
+  const groups = new Map((graph.children ?? []).map((group) => [group.id, group]));
+  const paths = new Map<string, ReadonlyArray<Point>>();
+  for (const edge of graph.edges ?? []) {
+    // Binary relationships have one section, in their common ancestor's
+    // coordinates. Convert it to the coordinate system of the rendered canvas.
+    if (edge.sections?.length !== 1) continue;
+    const { startPoint, endPoint, bendPoints } = edge.sections[0]!;
+    const group = groups.get(edge.container ?? "");
+    paths.set(edge.id, [startPoint, ...(bendPoints ?? []), endPoint].map((point) => ({
+      x: point.x + (group?.x ?? 0),
+      y: point.y + (group?.y ?? 0),
+    })));
+  }
+  return paths;
 }
 
 export function itemsFromElkGraph(graph: ElkNode): ReadonlyArray<LayoutItem> {

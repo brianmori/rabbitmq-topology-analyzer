@@ -167,6 +167,7 @@ export function TopologyExplorer({
     () => !window.matchMedia("(max-width: 780px)").matches,
   );
   const graphEntryRef = useRef<HTMLButtonElement>(null);
+  const controlsDisclosureRef = useRef<HTMLDetailsElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const focusDrawerRef = useRef(false);
   const focusSelectedDrawerTab = useCallback(() => {
@@ -209,8 +210,16 @@ export function TopologyExplorer({
   }, []);
 
   function returnToGraph() {
-    if (window.matchMedia("(max-width: 780px)").matches) setControlsOpen(false);
-    graphEntryRef.current?.focus();
+    if (window.matchMedia("(max-width: 780px)").matches) {
+      // Close the native disclosure before positioning the page, including
+      // when the browser still has an opening toggle event queued.
+      const disclosure = controlsDisclosureRef.current;
+      if (disclosure?.open) disclosure.open = false;
+      setControlsOpen(false);
+    }
+    const entry = graphEntryRef.current;
+    entry?.focus({ preventScroll: true });
+    entry?.parentElement?.scrollIntoView?.({ block: "start", inline: "nearest" });
   }
   const [activeSccRun, setActiveSccRun] = useState<SccRunResponse | null>(null);
   const [completedSccRun, setCompletedSccRun] = useState<SccRunResponse | null>(null);
@@ -1167,6 +1176,16 @@ export function TopologyExplorer({
     setCycleDetailError(null);
   }
 
+  function clearCycleFocusAndShowGraph() {
+    clearCycleFocus();
+    returnToGraph();
+  }
+
+  function clearComponentFocusAndShowGraph() {
+    setSelectedComponentIndexes(new Set());
+    returnToGraph();
+  }
+
   const emptyReason =
     !sccFocusActive && !cycleFocusActive && selectedVhosts.size === 0
       ? "No vhosts selected. Select at least one vhost to render resources."
@@ -1178,6 +1197,7 @@ export function TopologyExplorer({
     <>
       <div className="workbench-main">
         <details
+          ref={controlsDisclosureRef}
           className="controls-disclosure"
           open={controlsOpen}
           onToggle={(event) => setControlsOpen(event.currentTarget.open)}
@@ -1277,10 +1297,7 @@ export function TopologyExplorer({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => {
-                  clearCycleFocus();
-                  graphEntryRef.current?.focus();
-                }}
+                onClick={clearCycleFocusAndShowGraph}
               >
                 Clear cycle filter
               </button>
@@ -1288,10 +1305,7 @@ export function TopologyExplorer({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => {
-                  setSelectedComponentIndexes(new Set());
-                  graphEntryRef.current?.focus();
-                }}
+                onClick={clearComponentFocusAndShowGraph}
               >
                 Clear component filter
               </button>
@@ -1410,7 +1424,7 @@ export function TopologyExplorer({
                         return next;
                       });
                     }}
-                    onClearFocus={() => setSelectedComponentIndexes(new Set())}
+                    onClearFocus={clearComponentFocusAndShowGraph}
                   />
                 </div>
                 <div
@@ -1457,7 +1471,8 @@ export function TopologyExplorer({
                     }}
                     onPageOffsetChange={setCycleOffset}
                     onSelectCycle={selectCycle}
-                    onClearFocus={clearCycleFocus}
+                    onShowGraph={returnToGraph}
+                    onClearFocus={clearCycleFocusAndShowGraph}
                   />
                 </div>
               </div>
