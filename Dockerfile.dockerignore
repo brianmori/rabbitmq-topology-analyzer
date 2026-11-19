@@ -1,0 +1,23 @@
+# Production uses an allowlist. In particular, no operator captures, .env files,
+# authentication files, environments, or test/browser output reach this build.
+**
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/src/**/*.py
+!frontend/package.json
+!frontend/pnpm-lock.yaml
+!frontend/pnpm-workspace.yaml
+!frontend/index.html
+!frontend/tsconfig.app.json
+!frontend/vite.config.ts
+!frontend/src/**/*.ts
+!frontend/src/**/*.tsx
+!frontend/src/**/*.css
+!frontend/src/assets/react.svg
+!frontend/src/assets/vite.svg
+!frontend/src/assets/hero.png
+!frontend/public/favicon.svg
+!frontend/public/icons.svg
+frontend/src/**/*.test.*
+frontend/src/test/**
+**/__pycache__/

@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Install the committed registry lock without resolving newer packages.
+      UV_LOCKED: "true"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
+            backend/.python-version
+
+      - name: Install project Python
+        working-directory: backend
+        # Reads backend/.python-version; there is deliberately no version matrix.
+        run: uv python install
+
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: "1.59.0"
+
+      - name: Install pnpm
+        uses: pnpm/setup@v3
+        with:
+          version: "12.18.0"
+          runtime: node@24
+          working-directory: frontend
+          install: false
+          cache: true
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.3.1
+          checksum-policy: required
+
+      - name: Install backend dependencies from published packages
+        working-directory: backend
+        run: uv sync --locked --group dev
+
+      - name: Verify Python and published SDK installation
+        working-directory: backend
+        run: |
+          uv run --locked python --version
+          uv run --locked python -c 'from importlib.metadata import version; import rabbitmq_management_sdk as sdk; assert "site-packages" in str(sdk.__file__), sdk.__file__; print("Published SDK:", version("rabbitmq-management-sdk"))'
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Install pinned Chromium and system dependencies
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run quality, production frontend build, and all tests
+        # Includes Helm lint/render checks, pytest, Vitest, and real-browser
+        # none/OIDC/Basic journeys using the deterministic local provider.
+        run: just ci
+
+      - name: Build backend wheel and source distribution
+        working-directory: backend
+        run: |
+          uv sync --locked --group dev --group build
+          uv build --no-build-isolation
+
+      - name: Upload build outputs and resolved dependency locks
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-outputs
+          path: |
+            backend/dist/*.whl
+            backend/dist/*.tar.gz
+            frontend/dist/
+            backend/uv.lock
+            frontend/pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-failure-diagnostics
+          # Do not upload the uv cache stored elsewhere in test-results.
+          path: |
+            frontend/test-results/**/trace.zip
+            frontend/test-results/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+
+  container:
+    name: Container (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      DOCKER_DEFAULT_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          enable-cache: false
+
+      - name: Install just
+        uses: extractions/setup-just@v4
+        with:
+          just-version: "1.59.0"
+
+      - name: Build native production image
+        run: |
+          test "$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')" = "$DOCKER_DEFAULT_PLATFORM"
+          just image-build rabbitmq-topology-analyzer:ci
+
+      - name: Smoke-test installed image
+        run: just image-smoke rabbitmq-topology-analyzer:ci

@@ -1,0 +1,61 @@
+# One replica, Recreate, and one ASGI worker are fixed in the templates.
+image:
+  repository: ghcr.io/brianmori/rabbitmq-topology-analyzer
+  tag: "" # Defaults to Chart.appVersion; use an existing published release.
+  digest: "" # Optional sha256:...; takes precedence over tag.
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+auth:
+  mode: none # none | basic | oidc; none requires a trusted network boundary.
+  publicOrigin: "" # HTTPS origin, without a path, for basic/oidc.
+  existingSecret: "" # Managed outside this chart; no credentials in values.
+  basic:
+    usersKey: users.json
+    realm: RabbitMQ Topology Analyzer
+    verificationLimit: 2
+  oidc:
+    issuer: ""
+    discoveryUrl: "" # Empty uses issuer/.well-known/openid-configuration.
+    clientId: ""
+    clientSecretKey: client-secret
+    roleClaim: ""
+    roleMappingKey: role-mapping.json
+    scopes: openid offline_access
+    acceptedAlgorithms: RS256
+
+analysis:
+  workers: 2 # Bounded compute children, not web workers.
+  queueCapacity: 2
+  heartbeatTtlSeconds: 120
+  resultTtlSeconds: 14400
+captures:
+  maxUploadBytes: 52428800
+  sessionLimit: 5
+  globalLimit: 25
+  topologyTtlSeconds: 28800
+  existingClaim: "" # Optional read-only PVC; manifest.json at its root.
+
+# Integer byte quantities avoid unit ambiguity across the application and K8s.
+# resultsMaxBytes < resultsVolumeBytes; both volumes together < container limit.
+storage:
+  resultsMaxBytes: 3000000000
+  resultsVolumeBytes: 4294967296 # 4 GiB, disk-backed emptyDir.
+  temporaryVolumeBytes: 536870912 # 512 MiB, disk-backed emptyDir.
+  ephemeralRequestBytes: 5368709120 # 5 GiB.
+  ephemeralLimitBytes: 8589934592 # 8 GiB, including logs/overhead.
+resources:
+  requests:
+    cpu: "2"
+    memory: 2Gi
+  limits:
+    cpu: "4"
+    memory: 8Gi
+service:
+  port: 80
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  annotations: {} # Set controller-specific upload/concurrency limits here.
+  tlsSecretName: "" # Existing TLS Secret, if TLS terminates at this Ingress.

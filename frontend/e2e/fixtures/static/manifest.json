@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "analyses": [
+    {
+      "analysisId": "e2e-static-cycle",
+      "label": "E2E static cycle",
+      "clusters": [
+        {
+          "definitionsPath": "cycle.definitions.json"
+        }
+      ]
+    }
+  ]
+}

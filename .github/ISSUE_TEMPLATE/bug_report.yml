@@ -37,6 +37,6 @@ body:
     attributes:
       label: Environment
       description: Application version, browser/version, OS/architecture, and deployment method.
-      placeholder: e.g. app 1.0.0, Firefox <version>, Linux arm64, Docker
+      placeholder: e.g. app 0.1.0, Firefox <version>, Linux arm64, Docker
     validations:
       required: false

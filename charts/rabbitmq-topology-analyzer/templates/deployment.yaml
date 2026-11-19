@@ -1,0 +1,117 @@
+{{- include "analyzer.validateStorage" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "analyzer.fullname" . }}
+  labels:
+    {{- include "analyzer.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "analyzer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "analyzer.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: application
+          {{- if .Values.image.digest }}
+          image: {{ printf "%s@%s" .Values.image.repository .Values.image.digest | quote }}
+          {{- else }}
+          image: {{ printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) | quote }}
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [python, -m, uvicorn, "main:app"]
+          args: [--host, "0.0.0.0", --port, "8000", --workers, "1"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "analyzer.fullname" . }}
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:
+            httpGet: {path: /api/health/ready, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /api/health/live, port: http}
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: {path: /api/health/ready, port: http}
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: {{ .Values.resources.requests.cpu | quote }}
+              memory: {{ .Values.resources.requests.memory | quote }}
+              ephemeral-storage: {{ .Values.storage.ephemeralRequestBytes | int64 | quote }}
+            limits:
+              cpu: {{ .Values.resources.limits.cpu | quote }}
+              memory: {{ .Values.resources.limits.memory | quote }}
+              ephemeral-storage: {{ .Values.storage.ephemeralLimitBytes | int64 | quote }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: analysis-results
+              mountPath: /var/lib/rabbitmq-topology/results
+            - name: runtime-tmp
+              mountPath: /tmp
+            {{- if .Values.captures.existingClaim }}
+            - name: static-captures
+              mountPath: /captures
+              readOnly: true
+            {{- end }}
+            {{- if ne .Values.auth.mode "none" }}
+            - name: authentication-files
+              mountPath: /run/secrets/rabbitmq-topology
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: analysis-results
+          emptyDir:
+            sizeLimit: {{ .Values.storage.resultsVolumeBytes | int64 | quote }}
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: {{ .Values.storage.temporaryVolumeBytes | int64 | quote }}
+        {{- if .Values.captures.existingClaim }}
+        - name: static-captures
+          persistentVolumeClaim:
+            claimName: {{ .Values.captures.existingClaim | quote }}
+            readOnly: true
+        {{- end }}
+        {{- if ne .Values.auth.mode "none" }}
+        - name: authentication-files
+          secret:
+            secretName: {{ .Values.auth.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              {{- if eq .Values.auth.mode "basic" }}
+              - key: {{ .Values.auth.basic.usersKey | quote }}
+                path: users.json
+              {{- else }}
+              - key: {{ .Values.auth.oidc.clientSecretKey | quote }}
+                path: client-secret
+              - key: {{ .Values.auth.oidc.roleMappingKey | quote }}
+                path: role-mapping.json
+              {{- end }}
+        {{- end }}

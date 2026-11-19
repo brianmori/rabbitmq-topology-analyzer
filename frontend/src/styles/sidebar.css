@@ -1,0 +1,215 @@
+/* Exploration filters, operation controls, and the topology legend. */
+
+.operations-sidebar {
+  position: relative;
+  z-index: 2;
+  padding: 0.95rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 8px 0 0 8px;
+  box-shadow: 4px 8px 22px rgb(24 37 44 / 7%);
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.controls-disclosure { min-width: 0; }
+.controls-disclosure > summary { display: none; }
+
+.search-matches {
+  display: grid;
+  gap: 0.3rem;
+  max-height: 180px;
+  margin-top: 0.4rem;
+  padding: 0.3rem;
+  overflow-y: auto;
+}
+
+.search-matches button {
+  padding: 0.4rem;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 0.74rem;
+  text-align: left;
+}
+
+.search-matches button[aria-pressed="true"] {
+  background: #e2f1f5;
+  border-color: var(--focus);
+}
+
+.sidebar-section {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 0.9rem;
+  border: 0;
+  border-bottom: 1px solid #e2e8ea;
+}
+
+.sidebar-section + .sidebar-section {
+  padding-top: 0.9rem;
+}
+
+.sidebar-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.sidebar-section h2,
+.filter-group legend {
+  margin-bottom: 0.55rem;
+  color: var(--brand);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.filter-group legend {
+  padding: 0;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #3b4b52;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.sidebar-section input[type="search"],
+.sidebar-section input[type="number"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 0.45rem 0.6rem;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 0.7rem;
+  margin: -0.2rem 0 0.45rem;
+}
+
+.operation-controls {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.operation-controls button {
+  color: #52636a;
+  font-size: 0.76rem;
+  text-align: left;
+  background: #edf2f3;
+  border: 1px solid var(--line);
+}
+
+.operation-controls button:first-child:not(:disabled) {
+  color: #fff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.operation-controls .secondary-button {
+  color: #744025;
+  background: #fff8f2;
+  border-color: #c79a80;
+}
+
+.legend ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.46rem 0.55rem;
+  margin: 0;
+  padding: 0;
+  color: #43545b;
+  font-size: 0.7rem;
+  list-style: none;
+}
+
+.canvas-region > .legend {
+  padding: 0.45rem 0.65rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.canvas-region > .legend h2 {
+  margin: 0 0 0.3rem;
+  font-size: 0.7rem;
+}
+
+.legend li {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.legend-node {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 18px;
+  font-weight: 800;
+  background: #eef5f6;
+  border: 2px solid #3c6974;
+  border-radius: 3px;
+}
+
+.legend-node--queue {
+  border-color: #5c6f89;
+}
+
+.legend-node--shovel {
+  border-style: dashed;
+  border-color: #8b5f35;
+}
+
+.legend-node--missing {
+  color: #6d3d00;
+  background: repeating-linear-gradient(135deg, #fff6df, #fff6df 4px, #f6dfac 4px, #f6dfac 8px);
+  border-style: dashed;
+  border-color: #9a5b0a;
+}
+
+.legend-edge {
+  display: block;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 12px;
+  overflow: visible;
+}
+
+@media (max-width: 780px) {
+  .controls-disclosure > summary {
+    display: list-item;
+    padding: 0.6rem;
+    color: var(--brand);
+    font-weight: 700;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    cursor: pointer;
+  }
+
+  .operations-sidebar {
+    max-height: none;
+    border-right: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .canvas-region > .legend ul {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.2rem 0.35rem;
+    font-size: 0.63rem;
+  }
+  .canvas-region > .legend h2 { display: none; }
+}
