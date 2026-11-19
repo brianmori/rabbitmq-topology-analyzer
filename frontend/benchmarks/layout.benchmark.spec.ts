@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type Page, type Route } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { cpus, totalmem } from "node:os";
 import { resolve } from "node:path";
 import { completedLayoutGeneration } from "../e2e/layout-support.js";
@@ -36,6 +37,7 @@ type Scenario = "full" | "scc_filtered" | "cycle_filtered";
 const WARM_UP_RUNS = 1;
 const RECORDED_RUNS = 5;
 const LAYOUT_BUDGET_MS = 5_000;
+const playwrightVersion: string = createRequire(import.meta.url)("@playwright/test/package.json").version;
 const viewport = { width: 1440, height: 900 } as const;
 const topologyPath = resolve(
   process.env.RABBITMQ_BENCHMARK_TOPOLOGY_PATH ??
@@ -287,7 +289,7 @@ test("production Chromium full and filtered ELK layouts meet the v1 budget", asy
 
   const report = {
     environment: {
-      playwright: "1.62.1",
+      playwright: playwrightVersion,
       chromium: browser.version(),
       viewport,
       deviceScaleFactor: 1,

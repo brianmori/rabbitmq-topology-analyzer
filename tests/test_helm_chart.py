@@ -140,6 +140,51 @@ def test_authentication_projects_only_selected_external_secret_keys(mode: str) -
         assert not any("BASIC_" in key for key in settings)
 
 
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        ("https://TOPOLOGY.example.invalid:0443", "https://topology.example.invalid"),
+        ("https://xn--bndel-kva.example:08443", "https://xn--bndel-kva.example:8443"),
+        ("https://[2001:db8::1]:0443", "https://[2001:db8::1]"),
+        ("https://[2001:db8::1234]", "https://[2001:db8::1234]"),
+    ],
+)
+def test_oidc_callback_uses_the_same_origin_as_the_backend(origin: str, expected: str) -> None:
+    """Keep the generated callback and canonical public origin in agreement."""
+    settings = resources(_oidc_values(origin))["ConfigMap"]["data"]
+    assert settings["RABBITMQ_PUBLIC_ORIGIN"] == expected
+    assert settings["RABBITMQ_OIDC_REDIRECT_URI"] == f"{expected}/api/auth/oidc/callback"
+
+
+@pytest.mark.parametrize(
+    ("origin", "message"),
+    [
+        ("https://bündel.example", "use Punycode for internationalized names"),
+        ("https://topology.example.invalid:65536", "port must be between 1 and 65535"),
+    ],
+)
+def test_invalid_oidc_origin_fails_with_actionable_render_error(origin: str, message: str) -> None:
+    """Reject inputs that cannot produce a usable callback URI."""
+    result = render(_oidc_values(origin))
+    assert result.returncode != 0
+    assert message in result.stderr
+
+
+def _oidc_values(origin: str) -> dict[str, Any]:
+    return {
+        "auth": {
+            "mode": "oidc",
+            "publicOrigin": origin,
+            "existingSecret": "external-auth",
+            "oidc": {
+                "issuer": "https://issuer.example.invalid",
+                "clientId": "topology",
+                "roleClaim": "roles",
+            },
+        }
+    }
+
+
 def test_static_capture_ingress_digest_and_release_isolation() -> None:
     """Render operator overrides and verify mounted inputs and traffic select this release."""
     digest = "sha256:" + "a" * 64

@@ -8,6 +8,7 @@
  * real address and never triggers a CORS preflight.
  */
 
+import { browserUuid } from "../browserUuid";
 import type {
   AccessResponse,
   AnalysisCatalogueResponse,
@@ -347,7 +348,7 @@ export async function fetchAccess(): Promise<AccessResponse> {
 function getSessionToken(): string {
   let token = sessionStorage.getItem(SESSION_STORAGE_KEY);
   if (!token) {
-    token = crypto.randomUUID();
+    token = browserUuid();
     sessionStorage.setItem(SESSION_STORAGE_KEY, token);
   }
   return token;

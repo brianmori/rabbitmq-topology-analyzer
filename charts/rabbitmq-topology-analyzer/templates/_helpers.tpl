@@ -15,7 +15,22 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | 
 {{- end -}}
 
 {{- define "analyzer.publicOrigin" -}}
-{{- .Values.auth.publicOrigin | lower | trimSuffix ":443" -}}
+{{- $origin := .Values.auth.publicOrigin | lower -}}
+{{- if not (regexMatch `^https://([a-z0-9.-]+|\[[0-9a-f:.]+\])(:[0-9]+)?$` $origin) -}}
+{{- fail "auth.publicOrigin must be an HTTPS origin with an ASCII hostname (use Punycode for internationalized names) or a canonical IP address" -}}
+{{- end -}}
+{{- $portSuffix := regexFind `:[0-9]+$` $origin -}}
+{{- if $portSuffix -}}
+{{- $port := $portSuffix | trimPrefix ":" | atoi -}}
+{{- if or (lt $port 1) (gt $port 65535) -}}
+{{- fail "auth.publicOrigin port must be between 1 and 65535" -}}
+{{- end -}}
+{{- $origin = trimSuffix $portSuffix $origin -}}
+{{- if ne $port 443 -}}
+{{- $origin = printf "%s:%d" $origin $port -}}
+{{- end -}}
+{{- end -}}
+{{- $origin -}}
 {{- end -}}
 
 {{- define "analyzer.validateStorage" -}}

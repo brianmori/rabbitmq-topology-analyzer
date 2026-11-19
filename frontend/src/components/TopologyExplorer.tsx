@@ -10,6 +10,7 @@ import {
   startCycleRun,
   startSccRun,
 } from "../api/topology";
+import { browserUuid } from "../browserUuid";
 import { TopologyCanvas } from "../graph/TopologyCanvas";
 import {
   ALL_NODE_KINDS,
@@ -830,7 +831,7 @@ export function TopologyExplorer({
     if (computeRunActive || !isRequestCurrent(lifetime)) {
       return;
     }
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = browserUuid();
     activeIdempotencyKey.current = idempotencyKey;
     setStartingScc(true);
     setDrawerTab("Components");
@@ -928,7 +929,7 @@ export function TopologyExplorer({
   const runCycle = useCallback(() => {
     const lifetime = requestLifetime.current;
     if (computeRunActive || parsedMaxCycles === null || !isRequestCurrent(lifetime)) return;
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = browserUuid();
     activeIdempotencyKey.current = idempotencyKey;
     activeCycleMaxCycles.current = parsedMaxCycles;
     setStartingCycle(true);

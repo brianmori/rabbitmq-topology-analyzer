@@ -12,7 +12,7 @@ RUN pnpm exec tsc -p tsconfig.app.json && pnpm exec vite build
 
 FROM ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 AS uv
 
-FROM python:3.14.5-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb AS backend-builder
+FROM python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b AS backend-builder
 
 COPY --from=uv /uv /bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -30,7 +30,7 @@ RUN mkdir -p static/definitions \
     && uv pip install --python /opt/venv/bin/python --no-deps /wheels/rabbitmq_topology_analyzer_backend-*.whl \
     && uv pip check --python /opt/venv/bin/python
 
-FROM python:3.14.5-slim-bookworm@sha256:a9bee15510a364124aa24692899d269835683b883de42f7ebec8c293cf679ccb
+FROM python:3.14.10-slim-bookworm@sha256:3fe1a0b6c2d6b2ebb572906cdabeca75aeb558c0c17db5ffefbcf8094871c32b
 
 ARG VERSION=0.1.0
 ARG REVISION=unknown
@@ -43,7 +43,10 @@ LABEL org.opencontainers.image.title="RabbitMQ Topology Analyzer" \
     org.opencontainers.image.created="${CREATED}"
 
 COPY --from=backend-builder /opt/venv /opt/venv
-RUN useradd --create-home --uid 10001 app
+# The installed application needs neither the system pip nor its bundled seed.
+RUN python -m pip uninstall --yes pip \
+    && rm -r /usr/local/lib/python3.14/ensurepip \
+    && useradd --create-home --uid 10001 app
 WORKDIR /app
 COPY --from=frontend-builder /workspace/frontend/dist /app/frontend
 RUN /opt/venv/bin/python -c 'import os; from importlib.metadata import version; assert version("rabbitmq-topology-analyzer-backend") == os.environ["VERSION"], "VERSION must match installed package metadata"'

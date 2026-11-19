@@ -4,6 +4,12 @@ import { readFile } from "node:fs/promises";
 
 const cyclicDefinitions = resolve(import.meta.dirname, "fixtures/static/cycle.definitions.json");
 
+test.use({
+  launchOptions: {
+    args: ["--host-resolver-rules=MAP topology.test 127.0.0.1", "--no-proxy-server"],
+  },
+});
+
 async function layoutReady(page: Page) {
   await page.waitForFunction(() => {
     const canvas = document.querySelector(".topology-canvas");
@@ -30,6 +36,27 @@ async function expectLegendMatchesDrawing(page: Page) {
 function isApiResponse(response: Response, method: string, pathname: string): boolean {
   return response.request().method() === method && new URL(response.url()).pathname === pathname;
 }
+
+test("loads the catalogue and runs real analyses over plain HTTP on a private hostname", async ({
+  page,
+  baseURL,
+}) => {
+  const origin = new URL("/", baseURL);
+  origin.hostname = "topology.test";
+  await page.goto(origin.href);
+  expect(await page.evaluate(() => isSecureContext)).toBe(false);
+  await expect(page.getByRole("combobox", { name: "Analysis" })).toHaveValue("static:e2e-static-cycle");
+
+  const scc = page.waitForResponse((response) => isApiResponse(response, "POST", "/api/scc-runs"));
+  await page.getByRole("button", { name: "Run cyclic components" }).click();
+  expect((await scc).status()).toBe(202);
+  await expect(page.getByRole("status", { name: "Cyclic-component operation status" })).toContainText("1 cyclic component found.");
+
+  const cycle = page.waitForResponse((response) => isApiResponse(response, "POST", "/api/cycle-runs"));
+  await page.getByRole("button", { name: "Run structural cycles" }).click();
+  expect((await cycle).status()).toBe(202);
+  await expect(page.getByRole("status", { name: "Structural-cycle operation status" })).toContainText("1 structural cycle found.");
+});
 
 for (const width of [1440, 1024]) {
   test(`keeps the real two-node fixture readable after framing at ${width}px`, async ({ page }) => {
