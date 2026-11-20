@@ -19,8 +19,6 @@ const uploadResponse = {
 
 async function prepareUpload(user: ReturnType<typeof userEvent.setup>) {
   const dialog = screen.getByRole("dialog", { name: "Manage captured analysis" });
-  // Opening the dialog schedules initial focus for the next animation frame.
-  // Wait for that transition before typing so it cannot interrupt the entry.
   await waitFor(() => expect(within(dialog).getByRole("button", { name: "Close" })).toHaveFocus());
   const analysisId = within(dialog).getByLabelText("Analysis ID");
   await user.type(analysisId, "uploaded");
@@ -139,6 +137,31 @@ describe("CaptureManager", () => {
     expect(input).toHaveAccessibleDescription("Choose a definitions export.");
     expect(upload).not.toHaveBeenCalled();
   });
+  it("keeps the analysis ID focused if the user reaches it before initial focus runs", async () => {
+    const user = userEvent.setup();
+    const requestFrame = vi.spyOn(window, "requestAnimationFrame").mockReturnValueOnce(0);
+    render(
+      <CaptureManager
+        open
+        selectedAnalysis={null}
+        sessionAnalyses={[]}
+        operationActive={false}
+        onClose={vi.fn()}
+        onUpload={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const input = screen.getByLabelText("Analysis ID");
+    await user.click(input);
+    const [[initialFocus]] = requestFrame.mock.calls;
+    initialFocus(0);
+    await user.keyboard("session-capture");
+
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("session-capture");
+  });
+
   it("traps keyboard focus, closes with Escape, and restores the opener", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

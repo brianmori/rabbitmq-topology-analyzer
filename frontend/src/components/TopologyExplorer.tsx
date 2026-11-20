@@ -153,7 +153,7 @@ export function TopologyExplorer({
   );
   const [hideDefaultExchanges, setHideDefaultExchanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocusId, setSearchFocusId] = useState<string | null>(null);
+  const [searchFocus, setSearchFocus] = useState<{ id: string } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>(() =>
@@ -456,7 +456,7 @@ export function TopologyExplorer({
     () => visibleTopology.nodes.filter((node) => searchMatchIds.has(node.id)),
     [searchMatchIds, visibleTopology.nodes],
   );
-  if (searchFocusId && !searchMatchIds.has(searchFocusId)) setSearchFocusId(null);
+  if (searchFocus && !searchMatchIds.has(searchFocus.id)) setSearchFocus(null);
   const selectedNode =
     selection?.kind === "node"
       ? topology.nodes.find((node) => node.id === selection.id)
@@ -1212,9 +1212,10 @@ export function TopologyExplorer({
             searchQuery={searchQuery}
             searchMatchCount={searchMatchIds.size}
             searchMatches={searchMatches}
-            searchFocusId={searchFocusId}
+            searchFocusId={searchFocus?.id ?? null}
             onSearchMatchSelect={(id) => {
-              setSearchFocusId(id);
+              // Selecting the same match again requests another viewport move.
+              setSearchFocus({ id });
               inspect({ kind: "node", id });
             }}
             sccStatusText={currentSccStatusText}
@@ -1261,7 +1262,7 @@ export function TopologyExplorer({
             onKindChange={changeKind}
             onHideDefaultExchangesChange={setHideDefaultExchanges}
             onSearchQueryChange={(query) => {
-              setSearchFocusId(null);
+              setSearchFocus(null);
               setSearchQuery(query);
             }}
             onStartScc={runScc}
@@ -1326,7 +1327,7 @@ export function TopologyExplorer({
             <TopologyCanvas
               topology={visibleTopology}
               searchMatchIds={searchMatchIds}
-              searchFocusId={searchFocusId}
+              searchFocus={searchFocus}
               selection={selection}
               onSelectionChange={inspect}
               onExitCanvas={returnToGraph}

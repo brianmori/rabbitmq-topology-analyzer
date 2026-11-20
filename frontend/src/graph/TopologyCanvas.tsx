@@ -47,7 +47,7 @@ import { LargeGraphOverview } from "./LargeGraphOverview";
 interface TopologyCanvasProps {
   topology: VisibleTopology;
   searchMatchIds: ReadonlySet<string>;
-  searchFocusId?: string | null;
+  searchFocus?: { id: string } | null;
   selection: GraphSelection;
   onSelectionChange: (selection: GraphSelection) => void;
   onExitCanvas?: () => void;
@@ -98,7 +98,7 @@ function nodeAriaLabel(kind: TopologyNodeKind, name: string, vhost: string, miss
 function CanvasInner({
   topology,
   searchMatchIds,
-  searchFocusId = null,
+  searchFocus = null,
   selection,
   onSelectionChange,
   onExitCanvas,
@@ -392,22 +392,18 @@ function CanvasInner({
     };
   }, [canvasSize, dragPositions, draggedDrawing, flowEdges, flowNodes, largeDrawing, showOverview, transform]);
 
-  const frameDrawing = useCallback((drawing: DrawingLayout["bounds"]) => {
+  const fitCurrentDrawing = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas?.clientWidth || !canvas.clientHeight) return Promise.resolve(false);
-    const viewport = getViewportForBounds(
-      drawing, canvas.clientWidth, canvas.clientHeight, 0, 1.25, 0.16,
-    );
-    return reactFlow.setViewport(viewport, { duration: 0 });
-  }, [reactFlow]);
-
-  const fitCurrentDrawing = () => {
     const drawing = dragPositions.size === 0 ? bounds : drawingBounds(
       layoutItems.map((item) => ({ ...item, ...dragPositions.get(item.id) })),
       topology.edges, edgeRouting,
     );
-    void frameDrawing(drawing);
-  };
+    const viewport = getViewportForBounds(
+      drawing, canvas.clientWidth, canvas.clientHeight, 0, 1.25, 0.16,
+    );
+    return reactFlow.setViewport(viewport, { duration: 0 });
+  }, [bounds, dragPositions, edgeRouting, layoutItems, reactFlow, topology.edges]);
 
   useEffect(() => {
     if (
@@ -420,27 +416,29 @@ function CanvasInner({
       return;
     }
     const generation = fitGeneration;
+    let active = true;
     let frame: number;
     const frameLayout = () => {
-      if (generation !== latestGenerationRef.current) return;
+      if (!active || generation !== latestGenerationRef.current) return;
       // React Flow can still have the preceding compound dimensions/absolute
       // positions for a frame after a smaller focused layout is applied.
       const measured = large || layoutItems.every((item) => {
         const node = reactFlow.getInternalNode(item.id);
         const parent = item.parentId ? itemById.get(item.parentId) : undefined;
+        const position = dragPositions.get(item.id) ?? item;
         return node &&
           Math.abs((node.measured.width ?? 0) - item.width) < 1 &&
           Math.abs((node.measured.height ?? 0) - item.height) < 1 &&
-          Math.abs(node.internals.positionAbsolute.x - item.x - (parent?.x ?? 0)) < 1 &&
-          Math.abs(node.internals.positionAbsolute.y - item.y - (parent?.y ?? 0)) < 1;
+          Math.abs(node.internals.positionAbsolute.x - position.x - (parent?.x ?? 0)) < 1 &&
+          Math.abs(node.internals.positionAbsolute.y - position.y - (parent?.y ?? 0)) < 1;
       });
       const canvas = canvasRef.current;
       if (!measured || !canvas?.clientWidth || !canvas.clientHeight) {
         frame = requestAnimationFrame(frameLayout);
         return;
       }
-      void frameDrawing(bounds).then(() => {
-        if (generation !== latestGenerationRef.current) return;
+      void fitCurrentDrawing().then(() => {
+        if (!active || generation !== latestGenerationRef.current) return;
         const startMark = `rabbitmq-layout-${generation}-start`;
         const endMark = `rabbitmq-layout-${generation}-end`;
         const measureName = `rabbitmq-layout-${generation}`;
@@ -462,8 +460,14 @@ function CanvasInner({
       });
     };
     frame = requestAnimationFrame(frameLayout);
-    return () => cancelAnimationFrame(frame);
-  }, [bounds, completedGeneration, fitGeneration, flowNodes.length, frameDrawing, itemById, large, layoutItems, layoutState, reactFlow, topology]);
+    return () => {
+      active = false;
+      cancelAnimationFrame(frame);
+    };
+  }, [
+    completedGeneration, dragPositions, fitCurrentDrawing, fitGeneration, flowNodes.length,
+    itemById, large, layoutItems, layoutState, reactFlow, topology,
+  ]);
 
   // A drag updates the bounds used by the next search without recentering.
   const draggedNodesRef = useRef(draggedDrawing.nodes);
@@ -480,8 +484,8 @@ function CanvasInner({
     ) {
       return;
     }
-    // Match changes and completed layouts request centering. Read moved
-    // positions when search runs so dragging preserves the current viewport.
+    // Read moved positions when search recenters so dragging alone preserves
+    // the current viewport.
     // A restored compound layout can briefly retain the preceding vhost
     // dimensions. Wait for measurement so fitView uses the final positions.
     const generation = completedGeneration;
@@ -489,7 +493,7 @@ function CanvasInner({
     const centerWhenMeasured = () => {
       if (generation !== latestGenerationRef.current) return;
       const canvas = canvasRef.current;
-      const ids = searchFocusId ? [searchFocusId] : [...searchMatchIds];
+      const ids = searchFocus ? [searchFocus.id] : [...searchMatchIds];
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (largeDrawing && canvas) {
         const items = ids.flatMap((id) => {
@@ -526,7 +530,7 @@ function CanvasInner({
     };
     frame = requestAnimationFrame(centerWhenMeasured);
     return () => cancelAnimationFrame(frame);
-  }, [completedGeneration, edgeRouting, largeDrawing, layoutItems, layoutState, reactFlow, searchFocusId, searchMatchIds]);
+  }, [completedGeneration, edgeRouting, largeDrawing, layoutItems, layoutState, reactFlow, searchFocus, searchMatchIds]);
 
   const handleNodeChanges = useCallback((changes: NodeChange<TopologyFlowNode>[]) => {
     const positionChanges = new Map<string, XYPosition>();
@@ -603,7 +607,7 @@ function CanvasInner({
           <ControlButton
             aria-label="Fit view"
             title="Fit graph and relationships"
-            onClick={fitCurrentDrawing}
+            onClick={() => void fitCurrentDrawing()}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" fill="none" stroke="currentColor" strokeWidth="1.5" />

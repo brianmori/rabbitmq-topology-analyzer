@@ -38,6 +38,12 @@ function isApiResponse(response: Response, method: string, pathname: string): bo
   return response.request().method() === method && new URL(response.url()).pathname === pathname;
 }
 
+function horizontalGraphCenterOffset(card: Element): number {
+  const resource = card.getBoundingClientRect();
+  const graph = card.closest(".topology-canvas")!.getBoundingClientRect();
+  return Math.abs(resource.left + resource.width / 2 - graph.left - graph.width / 2);
+}
+
 test("loads the catalogue and runs real analyses over plain HTTP on a private hostname", async ({
   page,
   baseURL,
@@ -84,6 +90,63 @@ for (const width of [1440, 1024]) {
     }
   });
 }
+
+test("finishes framing after a resource moves before the first animation frame", async ({ page }) => {
+  // The worker and pointer events can run while viewport framing is paused.
+  const startTime = Date.now();
+  await page.clock.install({ time: startTime });
+  await page.clock.pauseAt(startTime + 60_000);
+  await page.goto("/");
+
+  const canvas = page.locator(".topology-canvas");
+  const queue = canvas.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await expect(queue).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-layout-state", "ready");
+  await expect(canvas).toHaveAttribute("data-layout-completed-generation", "0");
+  const position = () => queue.evaluate((card) =>
+    card.closest<HTMLElement>(".react-flow__node")!.style.transform);
+  const original = await position();
+  const { x, y, width, height } = (await queue.boundingBox())!;
+  const center = { x: x + width / 2, y: y + height / 2 };
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 15, center.y + 16, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(position).not.toBe(original);
+  const moved = await position();
+  const generation = await canvas.getAttribute("data-layout-generation");
+
+  await page.clock.resume();
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+  expect(await position()).toBe(moved);
+
+  await page.getByRole("searchbox", { name: "Resource name" }).fill("loop-q");
+  await expect.poll(() => queue.evaluate(horizontalGraphCenterOffset)).toBeLessThan(3);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+});
+
+test("recenters an already selected search match after fitting the whole graph", async ({ page }) => {
+  await page.goto("/");
+  const generation = await completedLayoutGeneration(page);
+  const viewport = page.locator(".react-flow__viewport");
+  const transform = () => viewport.evaluate((element) => (element as HTMLElement).style.transform);
+  const fitted = await transform();
+
+  await page.getByRole("searchbox", { name: "Resource name" }).fill("loop-");
+  const matches = page.getByRole("group", { name: "Visible resource matches" });
+  const queueMatch = matches.getByRole("button", { name: "queue loop-q, vhost /" });
+  const queue = page.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await queueMatch.click();
+  await expect(queueMatch).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => queue.evaluate(horizontalGraphCenterOffset)).toBeLessThan(3);
+  const centered = await transform();
+
+  await page.getByRole("button", { name: "Fit view", exact: true }).click();
+  await expect.poll(transform).toBe(fitted);
+  await queueMatch.click();
+  await expect.poll(transform).toBe(centered);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+});
 
 test("serves the production app through FastAPI and completes a real SDK workflow", async ({
   page,
