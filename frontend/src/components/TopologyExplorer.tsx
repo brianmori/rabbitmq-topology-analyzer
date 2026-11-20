@@ -153,7 +153,7 @@ export function TopologyExplorer({
   );
   const [hideDefaultExchanges, setHideDefaultExchanges] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocusId, setSearchFocusId] = useState<string | null>(null);
+  const [searchFocus, setSearchFocus] = useState<{ id: string } | null>(null);
   const [selection, setSelection] = useState<GraphSelection>(null);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>(() =>
@@ -167,6 +167,7 @@ export function TopologyExplorer({
     () => !window.matchMedia("(max-width: 780px)").matches,
   );
   const graphEntryRef = useRef<HTMLButtonElement>(null);
+  const controlsDisclosureRef = useRef<HTMLDetailsElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const focusDrawerRef = useRef(false);
   const focusSelectedDrawerTab = useCallback(() => {
@@ -209,8 +210,16 @@ export function TopologyExplorer({
   }, []);
 
   function returnToGraph() {
-    if (window.matchMedia("(max-width: 780px)").matches) setControlsOpen(false);
-    graphEntryRef.current?.focus();
+    if (window.matchMedia("(max-width: 780px)").matches) {
+      // Close the native disclosure before positioning the page, including
+      // when the browser still has an opening toggle event queued.
+      const disclosure = controlsDisclosureRef.current;
+      if (disclosure?.open) disclosure.open = false;
+      setControlsOpen(false);
+    }
+    const entry = graphEntryRef.current;
+    entry?.focus({ preventScroll: true });
+    entry?.parentElement?.scrollIntoView?.({ block: "start", inline: "nearest" });
   }
   const [activeSccRun, setActiveSccRun] = useState<SccRunResponse | null>(null);
   const [completedSccRun, setCompletedSccRun] = useState<SccRunResponse | null>(null);
@@ -447,7 +456,7 @@ export function TopologyExplorer({
     () => visibleTopology.nodes.filter((node) => searchMatchIds.has(node.id)),
     [searchMatchIds, visibleTopology.nodes],
   );
-  if (searchFocusId && !searchMatchIds.has(searchFocusId)) setSearchFocusId(null);
+  if (searchFocus && !searchMatchIds.has(searchFocus.id)) setSearchFocus(null);
   const selectedNode =
     selection?.kind === "node"
       ? topology.nodes.find((node) => node.id === selection.id)
@@ -1167,6 +1176,16 @@ export function TopologyExplorer({
     setCycleDetailError(null);
   }
 
+  function clearCycleFocusAndShowGraph() {
+    clearCycleFocus();
+    returnToGraph();
+  }
+
+  function clearComponentFocusAndShowGraph() {
+    setSelectedComponentIndexes(new Set());
+    returnToGraph();
+  }
+
   const emptyReason =
     !sccFocusActive && !cycleFocusActive && selectedVhosts.size === 0
       ? "No vhosts selected. Select at least one vhost to render resources."
@@ -1178,6 +1197,7 @@ export function TopologyExplorer({
     <>
       <div className="workbench-main">
         <details
+          ref={controlsDisclosureRef}
           className="controls-disclosure"
           open={controlsOpen}
           onToggle={(event) => setControlsOpen(event.currentTarget.open)}
@@ -1192,9 +1212,10 @@ export function TopologyExplorer({
             searchQuery={searchQuery}
             searchMatchCount={searchMatchIds.size}
             searchMatches={searchMatches}
-            searchFocusId={searchFocusId}
+            searchFocusId={searchFocus?.id ?? null}
             onSearchMatchSelect={(id) => {
-              setSearchFocusId(id);
+              // Selecting the same match again requests another viewport move.
+              setSearchFocus({ id });
               inspect({ kind: "node", id });
             }}
             sccStatusText={currentSccStatusText}
@@ -1241,7 +1262,7 @@ export function TopologyExplorer({
             onKindChange={changeKind}
             onHideDefaultExchangesChange={setHideDefaultExchanges}
             onSearchQueryChange={(query) => {
-              setSearchFocusId(null);
+              setSearchFocus(null);
               setSearchQuery(query);
             }}
             onStartScc={runScc}
@@ -1277,10 +1298,7 @@ export function TopologyExplorer({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => {
-                  clearCycleFocus();
-                  graphEntryRef.current?.focus();
-                }}
+                onClick={clearCycleFocusAndShowGraph}
               >
                 Clear cycle filter
               </button>
@@ -1288,10 +1306,7 @@ export function TopologyExplorer({
               <button
                 type="button"
                 className="text-button"
-                onClick={() => {
-                  setSelectedComponentIndexes(new Set());
-                  graphEntryRef.current?.focus();
-                }}
+                onClick={clearComponentFocusAndShowGraph}
               >
                 Clear component filter
               </button>
@@ -1312,7 +1327,7 @@ export function TopologyExplorer({
             <TopologyCanvas
               topology={visibleTopology}
               searchMatchIds={searchMatchIds}
-              searchFocusId={searchFocusId}
+              searchFocus={searchFocus}
               selection={selection}
               onSelectionChange={inspect}
               onExitCanvas={returnToGraph}
@@ -1410,7 +1425,7 @@ export function TopologyExplorer({
                         return next;
                       });
                     }}
-                    onClearFocus={() => setSelectedComponentIndexes(new Set())}
+                    onClearFocus={clearComponentFocusAndShowGraph}
                   />
                 </div>
                 <div
@@ -1457,7 +1472,8 @@ export function TopologyExplorer({
                     }}
                     onPageOffsetChange={setCycleOffset}
                     onSelectCycle={selectCycle}
-                    onClearFocus={clearCycleFocus}
+                    onShowGraph={returnToGraph}
+                    onClearFocus={clearCycleFocusAndShowGraph}
                   />
                 </div>
               </div>

@@ -1,5 +1,5 @@
 # The benchmark builds the frontend and type-checks its referenced test tooling.
-# Only its generated SDK topology fixture is admitted from local artifacts.
+# Only generated SDK topology fixtures are admitted from local artifacts.
 **
 !frontend/package.json
 !frontend/pnpm-lock.yaml
@@ -24,5 +24,6 @@
 !frontend/benchmarks/**/*.ts
 !frontend/e2e/**/*.ts
 !benchmarks/.artifacts/representative-topology.json
+!benchmarks/.artifacts/dense-topology.json
 **/.auth/**
 **/secrets/**

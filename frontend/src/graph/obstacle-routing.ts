@@ -73,6 +73,27 @@ export function pathsShareLane(left: RoutingPath, right: RoutingPath): boolean {
   return segmentsForPath(left).some((segment) => segmentsForPath(right).some((other) => segmentsTooClose(segment, other)));
 }
 
+function indexNearbySegments(segments: ReadonlyArray<Segment>) {
+  const horizontal = new Map<number, Segment[]>();
+  const vertical = new Map<number, Segment[]>();
+  for (const segment of segments) {
+    const isHorizontal = segment.start.y === segment.end.y;
+    const buckets = isHorizontal ? horizontal : vertical;
+    const coordinate = isHorizontal ? segment.start.y : segment.start.x;
+    const bucket = Math.floor(coordinate / PATH_CLEARANCE);
+    // A segment can be within clearance of moves in its own or an adjacent
+    // bucket. Insert into all three so each query visits candidates in the
+    // original order and preserves the order of floating-point additions.
+    for (const offset of [-1, 0, 1]) {
+      const key = bucket + offset;
+      const candidates = buckets.get(key);
+      if (candidates) candidates.push(segment);
+      else buckets.set(key, [segment]);
+    }
+  }
+  return { horizontal, vertical };
+}
+
 function hugsBorder(start: Point, end: Point, box: RoutingObstacle): boolean {
   const horizontal = start.y === end.y;
   const along = horizontal ? "x" : "y";
@@ -265,6 +286,7 @@ function searchRegion(
   const segments = reserved.flatMap((path) => segmentsForPath(path)).filter(({ start, end }) =>
     Math.max(start.x, end.x) >= region.left - PATH_CLEARANCE && Math.min(start.x, end.x) <= region.right + PATH_CLEARANCE &&
     Math.max(start.y, end.y) >= region.top - PATH_CLEARANCE && Math.min(start.y, end.y) <= region.bottom + PATH_CLEARANCE);
+  const nearbySegments = indexNearbySegments(segments);
   const parallelSegments = new Set(reserved.filter((path) => path.sourceId === sourceId && path.targetId === targetId)
     .flatMap((path) => segmentsForPath(path)));
   const escape = (point: Point, direction: 1 | -1, owner: string): Point => {
@@ -327,13 +349,15 @@ function searchRegion(
     const horizontal = segment.start.y === segment.end.y;
     const along = horizontal ? "x" : "y";
     const across = horizontal ? "y" : "x";
-    return segments.reduce((cost, other) => {
+    const bucket = Math.floor(segment.start[across] / PATH_CLEARANCE);
+    const candidates = (horizontal ? nearbySegments.horizontal : nearbySegments.vertical).get(bucket);
+    return candidates?.reduce((cost, other) => {
       if (!segmentsTooClose(segment, other)) return cost;
       const overlap = Math.min(Math.max(segment.start[along], segment.end[along]), Math.max(other.start[along], other.end[along])) -
         Math.max(Math.min(segment.start[along], segment.end[along]), Math.min(other.start[along], other.end[along]));
       const proximity = 1 - Math.abs(segment.start[across] - other.start[across]) / PATH_CLEARANCE;
       return cost + overlap * proximity * (parallelSegments.has(other) ? 128 : 8);
-    }, 0);
+    }, 0) ?? 0;
   };
   let entry: SearchEntry | undefined;
   while ((entry = queue.pop())) {

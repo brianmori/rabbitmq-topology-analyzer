@@ -14,7 +14,7 @@ RUN cd frontend && pnpm install --frozen-lockfile
 
 COPY frontend frontend
 COPY benchmarks/.artifacts/representative-topology.json \
-    benchmarks/.artifacts/representative-topology.json
+    benchmarks/.artifacts/dense-topology.json benchmarks/.artifacts/
 
 WORKDIR /workspace/frontend
 

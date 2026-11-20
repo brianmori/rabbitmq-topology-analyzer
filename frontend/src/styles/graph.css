@@ -64,6 +64,32 @@
   height: 100%;
 }
 
+.large-graph-overview {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.large-graph-overview__vhost {
+  fill: rgb(221 233 236 / 62%);
+  stroke: #9eb4bb;
+}
+
+.large-graph-overview text {
+  fill: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.large-graph-overview .topology-edge { stroke-width: 0.75; }
+.large-graph-overview__exchange { fill: #3b6f7b; }
+.large-graph-overview__queue { fill: #596f8b; }
+.large-graph-overview__shovel { fill: #8c6138; }
+.large-graph-overview__missing { fill: #9a5b0a; }
+.large-graph-overview__scc { fill: var(--scc-color); }
+.large-graph-overview__cycle { fill: #6d4b7c; }
+.large-graph-overview__match { fill: none; stroke: #087ea4; stroke-width: 2; }
+
 .canvas-empty {
   display: grid;
   place-items: center;

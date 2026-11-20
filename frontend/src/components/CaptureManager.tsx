@@ -115,7 +115,10 @@ export function CaptureManager({
     openerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const frame = requestAnimationFrame(() => {
-      dialogRef.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
+      const dialog = dialogRef.current;
+      if (dialog && !dialog.contains(document.activeElement)) {
+        dialog.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
+      }
     });
     return () => {
       cancelAnimationFrame(frame);

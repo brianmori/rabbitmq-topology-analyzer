@@ -1,8 +1,15 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
+import { completedLayoutGeneration } from "./layout-support.js";
 
 const cyclicDefinitions = resolve(import.meta.dirname, "fixtures/static/cycle.definitions.json");
+
+declare global {
+  interface Window {
+    heldLayoutReply?: { deliver: () => void; terminated: boolean };
+  }
+}
 
 test.use({
   launchOptions: {
@@ -35,6 +42,12 @@ async function expectLegendMatchesDrawing(page: Page) {
 
 function isApiResponse(response: Response, method: string, pathname: string): boolean {
   return response.request().method() === method && new URL(response.url()).pathname === pathname;
+}
+
+function horizontalGraphCenterOffset(card: Element): number {
+  const resource = card.getBoundingClientRect();
+  const graph = card.closest(".topology-canvas")!.getBoundingClientRect();
+  return Math.abs(resource.left + resource.width / 2 - graph.left - graph.width / 2);
 }
 
 test("loads the catalogue and runs real analyses over plain HTTP on a private hostname", async ({
@@ -83,6 +96,127 @@ for (const width of [1440, 1024]) {
     }
   });
 }
+
+test("finishes framing after a resource moves before the first animation frame", async ({ page }) => {
+  // The worker and pointer events can run while viewport framing is paused.
+  const startTime = Date.now();
+  await page.clock.install({ time: startTime });
+  await page.clock.pauseAt(startTime + 60_000);
+  await page.goto("/");
+
+  const canvas = page.locator(".topology-canvas");
+  const queue = canvas.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await expect(queue).toBeVisible();
+  await expect(canvas).toHaveAttribute("data-layout-state", "ready");
+  await expect(canvas).toHaveAttribute("data-layout-completed-generation", "0");
+  const position = () => queue.evaluate((card) =>
+    card.closest<HTMLElement>(".react-flow__node")!.style.transform);
+  const original = await position();
+  const { x, y, width, height } = (await queue.boundingBox())!;
+  const center = { x: x + width / 2, y: y + height / 2 };
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 15, center.y + 16, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(position).not.toBe(original);
+  const moved = await position();
+  const generation = await canvas.getAttribute("data-layout-generation");
+
+  await page.clock.resume();
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+  expect(await position()).toBe(moved);
+
+  await page.getByRole("searchbox", { name: "Resource name" }).fill("loop-q");
+  await expect.poll(() => queue.evaluate(horizontalGraphCenterOffset)).toBeLessThan(3);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+});
+
+test("recenters an already selected search match after fitting the whole graph", async ({ page }) => {
+  await page.goto("/");
+  const generation = await completedLayoutGeneration(page);
+  const viewport = page.locator(".react-flow__viewport");
+  const transform = () => viewport.evaluate((element) => (element as HTMLElement).style.transform);
+  const fitted = await transform();
+
+  await page.getByRole("searchbox", { name: "Resource name" }).fill("loop-");
+  const matches = page.getByRole("group", { name: "Visible resource matches" });
+  const queueMatch = matches.getByRole("button", { name: "queue loop-q, vhost /" });
+  const queue = page.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await queueMatch.click();
+  await expect(queueMatch).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => queue.evaluate(horizontalGraphCenterOffset)).toBeLessThan(3);
+  const centered = await transform();
+
+  await page.getByRole("button", { name: "Fit view", exact: true }).click();
+  await expect.poll(transform).toBe(fitted);
+  await queueMatch.click();
+  await expect.poll(transform).toBe(centered);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+});
+
+test("keeps the newer drawing when a cancelled layout reply arrives late", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    let holdFirstReply = true;
+    window.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        if (!holdFirstReply || !String(url).includes("topology-layout.worker")) return;
+        holdFirstReply = false;
+        this.addEventListener("message", (event) => {
+          event.stopImmediatePropagation();
+          const receive = this.onmessage;
+          const held = { deliver: () => receive?.call(this, event), terminated: false };
+          const terminate = this.terminate.bind(this);
+          this.terminate = () => {
+            held.terminated = true;
+            terminate();
+          };
+          window.heldLayoutReply = held;
+        }, { once: true });
+      }
+    };
+  });
+
+  await page.goto("/");
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas.getByRole("status")).toHaveText("Laying out visible topology…");
+  await page.waitForFunction(() => Boolean(window.heldLayoutReply));
+  await page.getByRole("checkbox", { name: /^Queues/ }).uncheck();
+  const generation = await completedLayoutGeneration(page);
+  const exchange = canvas.getByRole("button", { name: "Inspect exchange loop-x, vhost /" });
+  await expect(exchange).toBeVisible();
+  const camera = canvas.locator(".react-flow__viewport");
+  const cameraTransform = () => camera.evaluate((element) => (element as HTMLElement).style.transform);
+  const transform = await cameraTransform();
+
+  // Deliver a result already received from the worker across the cancelled request boundary.
+  const terminated = await page.evaluate(async () => {
+    const held = window.heldLayoutReply!;
+    const wasTerminated = held.terminated;
+    held.deliver();
+    await new Promise<number>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return wasTerminated;
+  });
+  expect(terminated).toBe(true);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+  await expect(canvas.locator(".resource-node")).toHaveCount(1);
+  await expect(exchange).toBeVisible();
+  expect(await cameraTransform()).toBe(transform);
+});
+
+test("recovers from a layout worker load failure through Reset layout", async ({ page }) => {
+  await page.route("**/assets/topology-layout.worker-*.js", (route) => route.abort("failed"), { times: 1 });
+  await page.goto("/");
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas).toHaveAttribute("data-layout-state", "error");
+  await expect(canvas.getByRole("status")).toHaveText("The layout worker is unavailable.");
+
+  await page.getByRole("button", { name: "Reset layout" }).click();
+  await completedLayoutGeneration(page);
+  await expect(canvas.getByText("The layout worker is unavailable.")).toHaveCount(0);
+  await expect(canvas.locator(".resource-node")).toHaveCount(2);
+});
 
 test("serves the production app through FastAPI and completes a real SDK workflow", async ({
   page,
@@ -155,6 +289,161 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   const component = results.getByRole("checkbox", { name: /Cyclic component 1/ });
   await component.check();
   await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
+});
+
+test("replaces a capture at the five-slot limit and uploads again after deletion", async ({ page }) => {
+  await page.goto("/");
+  const picker = page.getByRole("combobox", { name: "Analysis" });
+  const open = page.getByRole("button", { name: "Upload capture" });
+  const dialog = page.getByRole("dialog", { name: "Manage captured analysis" });
+  const id = dialog.getByLabel("Analysis ID");
+  const definitions = dialog.getByLabel("Definitions export");
+  const close = dialog.getByRole("button", { name: "Close" });
+  const sessionOptions = picker.locator('option[value^="session:"]');
+
+  async function submit(action: "Upload capture" | "Replace capture", status: number) {
+    const response = page.waitForResponse((candidate) =>
+      isApiResponse(candidate, "POST", "/api/definitions/upload"));
+    await dialog.getByRole("button", { name: action, exact: true }).click();
+    const submitted = await response;
+    expect(submitted.status()).toBe(status);
+    return submitted;
+  }
+
+  await open.click();
+  await definitions.setInputFiles(cyclicDefinitions);
+  for (let index = 1; index <= 5; index += 1) {
+    await id.fill(`quota-${index}`);
+    await submit("Upload capture", 201);
+    await expect(dialog.getByText(`Uploaded quota-${index}.`, { exact: true })).toBeVisible();
+  }
+  await id.fill("quota-6");
+  await submit("Upload capture", 409);
+  await expect(dialog.getByRole("alert")).toContainText("reached its retained-capture limit");
+  await close.click();
+  await expect(picker).toHaveValue("session:quota-5");
+  await expect(sessionOptions).toHaveCount(5);
+
+  await picker.selectOption("session:quota-1");
+  await open.click();
+  await expect(id).toHaveValue("quota-1");
+  await definitions.setInputFiles(resolve(import.meta.dirname, "fixtures/shovel3.definitions.json"));
+  const replaced = await submit("Replace capture", 200);
+  expect(await replaced.json()).toMatchObject({ replaced: true, analysis: { analysisId: "quota-1" } });
+  await expect(dialog.getByText("Replaced quota-1.", { exact: true })).toBeVisible();
+  await close.click();
+  await expect(sessionOptions).toHaveCount(5);
+
+  await picker.selectOption("session:quota-2");
+  await open.click();
+  await dialog.getByRole("button", { name: "Delete capture" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(sessionOptions).toHaveCount(4);
+  await expect(picker.locator('option[value="session:quota-2"]')).toHaveCount(0);
+
+  await open.click();
+  await id.fill("quota-6");
+  await definitions.setInputFiles(cyclicDefinitions);
+  await submit("Upload capture", 201);
+  await expect(dialog.getByText("Uploaded quota-6.", { exact: true })).toBeVisible();
+  await close.click();
+  await expect(picker).toHaveValue("session:quota-6");
+  await expect(sessionOptions).toHaveCount(5);
+});
+
+test("explores a large upload without mounting the entire graph", async ({ page }) => {
+  const capture = JSON.parse(await readFile(cyclicDefinitions, "utf8"));
+  const queue = capture.queues[0];
+  capture.queues.push(...Array.from({ length: 1_500 }, (_, index) => ({
+    ...queue, name: `bulk-queue-${index}`, arguments: { "x-queue-type": "classic" },
+  })));
+  capture.bindings.push({ ...capture.bindings[0], routing_key: "loop-second" });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Upload capture" }).click();
+  const dialog = page.getByRole("dialog", { name: "Manage captured analysis" });
+  await dialog.getByLabel("Analysis ID").fill("large-layout");
+  await dialog.getByLabel("Definitions export").setInputFiles({
+    name: "large-layout.definitions.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(capture)),
+  });
+  await dialog.getByRole("button", { name: "Upload capture" }).click();
+  await expect(dialog.getByText("Uploaded large-layout.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas).toHaveAttribute("data-layout-node-count", "1502");
+  const generation = await completedLayoutGeneration(page);
+  await expect(canvas.locator(".large-graph-overview")).toBeVisible();
+  await expect(canvas.locator(".resource-node")).toHaveCount(0);
+  const overviewBindings = canvas.locator(".large-graph-overview .topology-edge--binding");
+  const overviewBeforeDrag = (await overviewBindings.getAttribute("d"))!;
+  const search = page.getByRole("searchbox", { name: "Resource name" });
+  await search.fill("loop-q");
+  const queueCard = canvas.getByRole("button", { name: "Inspect queue loop-q, vhost /" });
+  await expect(queueCard).toBeVisible();
+  await expect(canvas.locator(".large-graph-overview")).toHaveCount(0);
+  expect(await canvas.locator(".resource-node").count()).toBeLessThan(100);
+
+  const bindings = canvas.locator(".react-flow__edge .topology-edge--binding");
+  const bindingPaths = () => bindings.evaluateAll(
+    (edges) => edges.map((edge) => [edge.id, edge.getAttribute("d")] as const),
+  );
+  const paths = new Map(await bindingPaths());
+  expect(paths.size).toBe(2);
+  expect(new Set(paths.values()).size).toBe(2);
+
+  // Wait for the browser to hit the queue after switching from the overview.
+  await queueCard.hover();
+  const viewport = canvas.locator(".react-flow__viewport");
+  const transform = await viewport.evaluate((element) => element.style.transform);
+  const queuePosition = () => queueCard.evaluate((card) => {
+    const node = card.closest<HTMLElement>(".react-flow__node")!;
+    const { m41: x, m42: y } = new DOMMatrixReadOnly(node.style.transform);
+    return { x, y };
+  });
+  const start = await queuePosition();
+  const before = (await queueCard.boundingBox())!;
+  const pointer = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
+  await page.mouse.down();
+  await page.mouse.move(pointer.x + 29, pointer.y + 23, { steps: 10 });
+  await page.mouse.up();
+  await expect.poll(async () => (await queuePosition()).x - start.x).toBeGreaterThan(10);
+  await expect.poll(async () => {
+    const movedPaths = await bindingPaths();
+    return movedPaths.length === 2 && movedPaths.every(([id, path]) => paths.has(id) && path !== paths.get(id));
+  }).toBe(true);
+  const { x: movedX, y: movedY } = await queuePosition();
+  const queueHeight = await queueCard.evaluate((card) => (card as HTMLElement).offsetHeight);
+  for (const [, path] of await bindingPaths()) {
+    // Routed paths end with a line command to the target port. Read the
+    // coordinates directly for the very tall compound layout in this fixture.
+    const [x, y] = path!.slice(path!.lastIndexOf("L") + 1).split(" ").map(Number);
+    expect(Math.abs(x! - movedX)).toBeLessThan(1);
+    expect(y).toBeGreaterThan(movedY);
+    expect(y).toBeLessThan(movedY + queueHeight);
+  }
+  expect(await viewport.evaluate((element) => element.style.transform)).toBe(transform);
+
+  const inspector = canvas.getByRole("button", { name: /Inspect binding.*routing key loop-second$/ });
+  await inspector.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("region", { name: "Safe details" }).getByText("loop-second", { exact: true }))
+    .toBeVisible();
+
+  // Search and the overview use the moved geometry while preserving layout.
+  await search.fill("LOOP-Q");
+  const cardWidth = await queueCard.evaluate((element) => (element as HTMLElement).offsetWidth);
+  const canvasWidth = await canvas.evaluate((element) => element.clientWidth);
+  await expect.poll(() => viewport.evaluate((element, { x, cardWidth, canvasWidth }) => {
+    const { m11: zoom, m41: translateX } = new DOMMatrixReadOnly(element.style.transform);
+    return Math.abs((x + cardWidth / 2) * zoom + translateX - canvasWidth / 2);
+  }, { x: movedX, cardWidth, canvasWidth })).toBeLessThan(3);
+  await page.getByRole("button", { name: "Fit view", exact: true }).click();
+  await expect(canvas.locator(".large-graph-overview")).toBeVisible();
+  await expect(overviewBindings).not.toHaveAttribute("d", overviewBeforeDrag);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
 });
 
 async function expectClearRoutes(page: Page) {
@@ -417,6 +706,74 @@ test("explains focused scope and restores exploration while retaining real SDK r
   await expect(page.locator(".cycle-summary-row")).toHaveCount(1);
   expect(topologyRequests).toBe(2);
 });
+
+for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 }]) {
+  test(`navigates between focused results and the visible drawing at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    let topologyRequests = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/topology") topologyRequests += 1;
+    });
+    await page.goto("/");
+    await completedLayoutGeneration(page);
+    const disclosure = page.locator(".controls-disclosure");
+    if (viewport.width < 780) await disclosure.locator("summary").click();
+    await page.getByRole("button", { name: "Run cyclic components" }).click();
+    await page.getByRole("button", { name: "Open components", exact: true }).click();
+    const component = page.getByRole("checkbox", { name: /Cyclic component 1/ });
+    await component.check();
+    await expect(page.getByRole("region", { name: "Graph presentation" })).toContainText("Component focus");
+    await page.getByRole("button", { name: "Run structural cycles" }).click();
+    await page.getByRole("button", { name: "Open cycles", exact: true }).click();
+    const drawer = page.locator(".results-drawer");
+    await drawer.getByRole("button", { name: /Cycle 1 / }).click();
+    const path = drawer.getByRole("article", { name: "Cycle 1 path" });
+    await expect(path).toBeVisible();
+    await expect(page.getByRole("region", { name: "Graph presentation" })).toContainText("Cycle 1 focus");
+    const generation = await completedLayoutGeneration(page);
+    const graph = page.locator(".topology-canvas");
+    const camera = graph.locator(".react-flow__viewport");
+    const transform = await camera.evaluate((element) => element.style.transform);
+    const graphControls = page.getByRole("navigation", { name: "Graph inspection and results" });
+    const graphEntry = graphControls.getByRole("button", { name: "Open inspection" });
+
+    await drawer.getByRole("button", { name: "Return to graph" }).click();
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    if (viewport.width < 780) await expect(disclosure).not.toHaveAttribute("open");
+
+    const openCycles = graphControls.getByRole("button", { name: "Cycles (1)", exact: true });
+    await openCycles.click();
+    const showCycle = path.getByRole("button", { name: "Show cycle on graph" });
+    await showCycle.focus();
+    await page.keyboard.press("Enter");
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    expect(await completedLayoutGeneration(page)).toBe(generation);
+    expect(await camera.evaluate((element) => element.style.transform)).toBe(transform);
+
+    await openCycles.click();
+    await path.getByRole("button", { name: "Clear cycle focus" }).click();
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    const mode = page.getByRole("region", { name: "Graph presentation" });
+    await expect(mode).toContainText("Component focus");
+    await expect(drawer.getByRole("button", { name: /Cycle 1 / })).toBeVisible();
+    await expect(path).toHaveCount(0);
+
+    const openComponents = graphControls.getByRole("button", { name: "Components (1)", exact: true });
+    await openComponents.click();
+    await expect(component).toBeChecked();
+    const clearComponent = drawer.getByRole("button", { name: "Clear component focus" });
+    await clearComponent.focus();
+    await page.keyboard.press("Enter");
+    await expect(graphEntry).toBeFocused();
+    await expect(graph).toBeInViewport({ ratio: 0.95 });
+    await expect(mode).toContainText("Exploration view");
+    await expect(component).not.toBeChecked();
+    expect(topologyRequests).toBe(1);
+  });
+}
 
 for (const motion of ["reduce", "no-preference"] as const) {
   test(`inspects exact real-SDK parallel relationships and matching legend patterns (${motion})`, async ({ page }, testInfo) => {

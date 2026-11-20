@@ -12,6 +12,8 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react()],
   worker: { format: "es" },
+  // Prebundle the worker-only CommonJS import before opening the first graph.
+  optimizeDeps: { include: ["elkjs/lib/elk.bundled.js"] },
   server: {
     // Forwards /api/* to the FastAPI backend during local dev, so the
     // browser sees everything as same-origin -- no CORS headers needed
