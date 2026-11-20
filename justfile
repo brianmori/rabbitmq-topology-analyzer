@@ -152,14 +152,17 @@ representative-fixture:
 benchmark-backend:
     cd backend && uv run python -m benchmarks.benchmark_backend
 
-# Export the real-SDK graph and measure production Chromium ELK layouts.
-benchmark-layout:
+# Export SDK-validated fixtures for production Chromium benchmarks.
+benchmark-layout-fixtures:
     cd backend && uv run python -m benchmarks.export_representative_topology ../benchmarks/.artifacts/representative-topology.json
+    cd backend && uv run python -m benchmarks.export_representative_topology ../benchmarks/.artifacts/dense-topology.json --dense
+
+# Measure production Chromium layout and interaction times.
+benchmark-layout: benchmark-layout-fixtures
     cd frontend && pnpm benchmark:layout
 
 # Run the pinned browser benchmark with the canonical 4-CPU/8-GiB limits.
-benchmark-layout-container:
-    cd backend && uv run python -m benchmarks.export_representative_topology ../benchmarks/.artifacts/representative-topology.json
+benchmark-layout-container: benchmark-layout-fixtures
     docker build --file benchmarks/browser.Dockerfile --tag rabbitmq-topology-layout-benchmark:local .
     docker run --rm --cpus 4 --memory 8g --shm-size 2g --mount type=bind,src={{justfile_directory()}}/benchmarks/.artifacts,dst=/workspace/benchmarks/.artifacts rabbitmq-topology-layout-benchmark:local
 

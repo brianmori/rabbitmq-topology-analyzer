@@ -5,6 +5,12 @@ import { completedLayoutGeneration } from "./layout-support.js";
 
 const cyclicDefinitions = resolve(import.meta.dirname, "fixtures/static/cycle.definitions.json");
 
+declare global {
+  interface Window {
+    heldLayoutReply?: { deliver: () => void; terminated: boolean };
+  }
+}
+
 test.use({
   launchOptions: {
     args: ["--host-resolver-rules=MAP topology.test 127.0.0.1", "--no-proxy-server"],
@@ -148,6 +154,70 @@ test("recenters an already selected search match after fitting the whole graph",
   expect(await completedLayoutGeneration(page)).toBe(generation);
 });
 
+test("keeps the newer drawing when a cancelled layout reply arrives late", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    let holdFirstReply = true;
+    window.Worker = class extends NativeWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        if (!holdFirstReply || !String(url).includes("topology-layout.worker")) return;
+        holdFirstReply = false;
+        this.addEventListener("message", (event) => {
+          event.stopImmediatePropagation();
+          const receive = this.onmessage;
+          const held = { deliver: () => receive?.call(this, event), terminated: false };
+          const terminate = this.terminate.bind(this);
+          this.terminate = () => {
+            held.terminated = true;
+            terminate();
+          };
+          window.heldLayoutReply = held;
+        }, { once: true });
+      }
+    };
+  });
+
+  await page.goto("/");
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas.getByRole("status")).toHaveText("Laying out visible topology…");
+  await page.waitForFunction(() => Boolean(window.heldLayoutReply));
+  await page.getByRole("checkbox", { name: /^Queues/ }).uncheck();
+  const generation = await completedLayoutGeneration(page);
+  const exchange = canvas.getByRole("button", { name: "Inspect exchange loop-x, vhost /" });
+  await expect(exchange).toBeVisible();
+  const camera = canvas.locator(".react-flow__viewport");
+  const cameraTransform = () => camera.evaluate((element) => (element as HTMLElement).style.transform);
+  const transform = await cameraTransform();
+
+  // Deliver a result already received from the worker across the cancelled request boundary.
+  const terminated = await page.evaluate(async () => {
+    const held = window.heldLayoutReply!;
+    const wasTerminated = held.terminated;
+    held.deliver();
+    await new Promise<number>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return wasTerminated;
+  });
+  expect(terminated).toBe(true);
+  expect(await completedLayoutGeneration(page)).toBe(generation);
+  await expect(canvas.locator(".resource-node")).toHaveCount(1);
+  await expect(exchange).toBeVisible();
+  expect(await cameraTransform()).toBe(transform);
+});
+
+test("recovers from a layout worker load failure through Reset layout", async ({ page }) => {
+  await page.route("**/assets/topology-layout.worker-*.js", (route) => route.abort("failed"), { times: 1 });
+  await page.goto("/");
+  const canvas = page.locator(".topology-canvas");
+  await expect(canvas).toHaveAttribute("data-layout-state", "error");
+  await expect(canvas.getByRole("status")).toHaveText("The layout worker is unavailable.");
+
+  await page.getByRole("button", { name: "Reset layout" }).click();
+  await completedLayoutGeneration(page);
+  await expect(canvas.getByText("The layout worker is unavailable.")).toHaveCount(0);
+  await expect(canvas.locator(".resource-node")).toHaveCount(2);
+});
+
 test("serves the production app through FastAPI and completes a real SDK workflow", async ({
   page,
 }) => {
@@ -221,6 +291,66 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
 });
 
+test("replaces a capture at the five-slot limit and uploads again after deletion", async ({ page }) => {
+  await page.goto("/");
+  const picker = page.getByRole("combobox", { name: "Analysis" });
+  const open = page.getByRole("button", { name: "Upload capture" });
+  const dialog = page.getByRole("dialog", { name: "Manage captured analysis" });
+  const id = dialog.getByLabel("Analysis ID");
+  const definitions = dialog.getByLabel("Definitions export");
+  const close = dialog.getByRole("button", { name: "Close" });
+  const sessionOptions = picker.locator('option[value^="session:"]');
+
+  async function submit(action: "Upload capture" | "Replace capture", status: number) {
+    const response = page.waitForResponse((candidate) =>
+      isApiResponse(candidate, "POST", "/api/definitions/upload"));
+    await dialog.getByRole("button", { name: action, exact: true }).click();
+    const submitted = await response;
+    expect(submitted.status()).toBe(status);
+    return submitted;
+  }
+
+  await open.click();
+  await definitions.setInputFiles(cyclicDefinitions);
+  for (let index = 1; index <= 5; index += 1) {
+    await id.fill(`quota-${index}`);
+    await submit("Upload capture", 201);
+    await expect(dialog.getByText(`Uploaded quota-${index}.`, { exact: true })).toBeVisible();
+  }
+  await id.fill("quota-6");
+  await submit("Upload capture", 409);
+  await expect(dialog.getByRole("alert")).toContainText("reached its retained-capture limit");
+  await close.click();
+  await expect(picker).toHaveValue("session:quota-5");
+  await expect(sessionOptions).toHaveCount(5);
+
+  await picker.selectOption("session:quota-1");
+  await open.click();
+  await expect(id).toHaveValue("quota-1");
+  await definitions.setInputFiles(resolve(import.meta.dirname, "fixtures/shovel3.definitions.json"));
+  const replaced = await submit("Replace capture", 200);
+  expect(await replaced.json()).toMatchObject({ replaced: true, analysis: { analysisId: "quota-1" } });
+  await expect(dialog.getByText("Replaced quota-1.", { exact: true })).toBeVisible();
+  await close.click();
+  await expect(sessionOptions).toHaveCount(5);
+
+  await picker.selectOption("session:quota-2");
+  await open.click();
+  await dialog.getByRole("button", { name: "Delete capture" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(sessionOptions).toHaveCount(4);
+  await expect(picker.locator('option[value="session:quota-2"]')).toHaveCount(0);
+
+  await open.click();
+  await id.fill("quota-6");
+  await definitions.setInputFiles(cyclicDefinitions);
+  await submit("Upload capture", 201);
+  await expect(dialog.getByText("Uploaded quota-6.", { exact: true })).toBeVisible();
+  await close.click();
+  await expect(picker).toHaveValue("session:quota-6");
+  await expect(sessionOptions).toHaveCount(5);
+});
+
 test("explores a large upload without mounting the entire graph", async ({ page }) => {
   const capture = JSON.parse(await readFile(cyclicDefinitions, "utf8"));
   const queue = capture.queues[0];
@@ -264,7 +394,8 @@ test("explores a large upload without mounting the entire graph", async ({ page 
   expect(paths.size).toBe(2);
   expect(new Set(paths.values()).size).toBe(2);
 
-  await canvas.scrollIntoViewIfNeeded();
+  // Wait for the browser to hit the queue after switching from the overview.
+  await queueCard.hover();
   const viewport = canvas.locator(".react-flow__viewport");
   const transform = await viewport.evaluate((element) => element.style.transform);
   const queuePosition = () => queueCard.evaluate((card) => {
@@ -275,9 +406,6 @@ test("explores a large upload without mounting the entire graph", async ({ page 
   const start = await queuePosition();
   const before = (await queueCard.boundingBox())!;
   const pointer = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
-  expect(await queueCard.evaluate((card, { x, y }) => card.contains(document.elementFromPoint(x, y)), pointer))
-    .toBe(true);
-  await page.mouse.move(pointer.x, pointer.y);
   await page.mouse.down();
   await page.mouse.move(pointer.x + 29, pointer.y + 23, { steps: 10 });
   await page.mouse.up();

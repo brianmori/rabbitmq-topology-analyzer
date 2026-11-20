@@ -6,12 +6,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING
 
+from rabbitmq_management_sdk import ClusterAuditor
+
 from analyses.snapshots import (
     SnapshotMetadata,
     compute_snapshot_revision_from_files,
     create_analysis_snapshot,
 )
 from benchmarks.representative_capture import (
+    DENSE_EXPECTED_SIZE,
+    DENSE_VHOST_COUNT,
     VHOST_COUNT,
     load_and_validate,
     write_representative_definitions,
@@ -26,16 +30,26 @@ if TYPE_CHECKING:
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path, help="Safe topology JSON output path.")
+    parser.add_argument("--dense", action="store_true", help="Export the larger stress fixture.")
     return parser.parse_args(argv)
 
 
-def export_representative_topology(output_path: Path) -> Path:
+def export_representative_topology(output_path: Path, *, dense: bool = False) -> Path:
     """Generate through the SDK, serialize through the app adapter, and write JSON."""
     with TemporaryDirectory(prefix="rabbitmq-topology-export-") as temporary_directory:
         definitions_path = write_representative_definitions(
             Path(temporary_directory) / "definitions.json",
+            dense=dense,
         )
-        auditor, _ = load_and_validate(definitions_path)
+        if dense:
+            auditor = ClusterAuditor.from_files(definitions_path=definitions_path)
+            size = (len(auditor.topology.nodes), len(auditor.topology.edges))
+            if size != DENSE_EXPECTED_SIZE:
+                raise ValueError(
+                    f"dense SDK topology size mismatch: expected {DENSE_EXPECTED_SIZE}, got {size}"
+                )
+        else:
+            auditor, _ = load_and_validate(definitions_path)
         revision = compute_snapshot_revision_from_files(
             definitions_path=definitions_path,
             queues_path=None,
@@ -45,14 +59,14 @@ def export_representative_topology(output_path: Path) -> Path:
         snapshot = create_analysis_snapshot(
             auditor.topology,
             SnapshotMetadata(
-                analysis_id="representative-v1",
+                analysis_id="dense-v1" if dense else "representative-v1",
                 source=AnalysisSource.STATIC,
-                label="Representative v1 fixture",
+                label="Dense topology fixture" if dense else "Representative v1 fixture",
                 capture_completeness=CaptureCompleteness.DEFINITIONS_ONLY,
                 snapshot_revision=revision,
                 cluster_tags=dict(auditor.definitions.cluster_tags or {}),
                 in_cluster_amqp_hosts=(),
-                vhost_count=VHOST_COUNT,
+                vhost_count=DENSE_VHOST_COUNT if dense else VHOST_COUNT,
             ),
         )
         payload = serialize_topology(snapshot).model_dump(mode="json", by_alias=True)
@@ -67,7 +81,7 @@ def export_representative_topology(output_path: Path) -> Path:
 def main(argv: Sequence[str] | None = None) -> int:
     """Write one safe representative topology fixture."""
     args = _parse_args(argv)
-    output_path = export_representative_topology(args.output.resolve())
+    output_path = export_representative_topology(args.output.resolve(), dense=args.dense)
     print(output_path)
     return 0
 

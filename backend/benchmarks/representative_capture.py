@@ -26,6 +26,10 @@ PARALLEL_EDGE_EXTRAS = 100
 CROSS_VHOST_SHOVEL_EDGES = 25
 EXPECTED_NODE_COUNT = 600
 EXPECTED_EDGE_COUNT = 1_200
+DENSE_VHOST_COUNT = 10
+DENSE_EXCHANGES_PER_VHOST = 100
+DENSE_QUEUES_PER_VHOST = 399
+DENSE_EXPECTED_SIZE = (5_000, 5_000)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +115,28 @@ def _bindings(vhost: str) -> list[dict[str, object]]:
     return bindings
 
 
-def _shovel(vhost_index: int) -> dict[str, object]:
+def _dense_bindings(vhost: str) -> list[dict[str, object]]:
+    bindings = [
+        _binding(vhost, queue_index % DENSE_EXCHANGES_PER_VHOST, queue_index, queue_index)
+        for queue_index in range(DENSE_QUEUES_PER_VHOST)
+    ]
+    # Add parallel routes and fan-in. Every queue already has an incoming binding.
+    bindings.extend(
+        _binding(
+            vhost,
+            queue_index if queue_index % 4 == 0 else queue_index + 1,
+            queue_index,
+            DENSE_QUEUES_PER_VHOST + queue_index,
+        )
+        for queue_index in range(DENSE_EXCHANGES_PER_VHOST - 1)
+    )
+    return bindings
+
+
+def _shovel(vhost_index: int, vhost_count: int) -> dict[str, object]:
     source_vhost = _vhost_name(vhost_index)
     destination_index = vhost_index + 1 if vhost_index < CROSS_VHOST_SHOVEL_EDGES else vhost_index
-    destination_vhost = _vhost_name(destination_index % VHOST_COUNT)
+    destination_vhost = _vhost_name(destination_index % vhost_count)
     return {
         "vhost": source_vhost,
         "component": "shovel",
@@ -130,9 +152,13 @@ def _shovel(vhost_index: int) -> dict[str, object]:
     }
 
 
-def representative_definitions() -> dict[str, object]:
-    """Return deterministic definitions input for the representative SDK graph."""
-    vhosts = [_vhost_name(index) for index in range(VHOST_COUNT)]
+def representative_definitions(*, dense: bool = False) -> dict[str, object]:
+    """Return deterministic definitions for the representative or dense SDK graph."""
+    vhost_count = DENSE_VHOST_COUNT if dense else VHOST_COUNT
+    exchanges_per_vhost = DENSE_EXCHANGES_PER_VHOST if dense else EXCHANGES_PER_VHOST
+    queues_per_vhost = DENSE_QUEUES_PER_VHOST if dense else QUEUES_PER_VHOST
+    bindings = _dense_bindings if dense else _bindings
+    vhosts = [_vhost_name(index) for index in range(vhost_count)]
     return {
         "users": [],
         "vhosts": [{"name": vhost} for vhost in vhosts],
@@ -143,28 +169,28 @@ def representative_definitions() -> dict[str, object]:
             {"name": "cluster_name", "value": "Milestone 5 representative topology"},
             {"name": "cluster_tags", "value": {"fixture": "representative-v1"}},
         ],
-        "parameters": [_shovel(index) for index in range(VHOST_COUNT)],
+        "parameters": [_shovel(index, vhost_count) for index in range(vhost_count)],
         "policies": [],
         "queues": [
             _queue(vhost, queue_index)
             for vhost in vhosts
-            for queue_index in range(QUEUES_PER_VHOST)
+            for queue_index in range(queues_per_vhost)
         ],
         "exchanges": [
             _exchange(vhost, exchange_index)
             for vhost in vhosts
-            for exchange_index in range(EXCHANGES_PER_VHOST)
+            for exchange_index in range(exchanges_per_vhost)
         ],
-        "bindings": [binding for vhost in vhosts for binding in _bindings(vhost)],
+        "bindings": [binding for vhost in vhosts for binding in bindings(vhost)],
     }
 
 
-def write_representative_definitions(output_path: Path) -> Path:
+def write_representative_definitions(output_path: Path, *, dense: bool = False) -> Path:
     """Write the deterministic capture with stable compact JSON encoding."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(
         json.dumps(
-            representative_definitions(),
+            representative_definitions(dense=dense),
             ensure_ascii=False,
             separators=(",", ":"),
             sort_keys=True,

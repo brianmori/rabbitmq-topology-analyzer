@@ -1,8 +1,8 @@
-import { expect, test, type Browser, type Page, type Route } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page, type Route } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { cpus, totalmem } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { completedLayoutGeneration } from "../e2e/layout-support.js";
 
 interface TopologyNode {
@@ -46,6 +46,8 @@ const topologyPath = resolve(
 const reportPath = resolve(
   process.env.RABBITMQ_LAYOUT_BENCHMARK_REPORT ?? "../benchmarks/.artifacts/layout-benchmark.json",
 );
+const denseTopologyPath = resolve("../benchmarks/.artifacts/dense-topology.json");
+const denseReportPath = resolve(dirname(reportPath), "dense-layout-benchmark.json");
 
 declare global {
   interface Window {
@@ -112,13 +114,13 @@ async function fulfillApi(route: Route, topology: TopologyFixture): Promise<void
         static: [
           {
             analysisId: topology.analysisId,
-            label: "Representative v1 fixture",
+            label: "Layout benchmark fixture",
             source: "static",
             snapshotRevision: topology.snapshotRevision,
             loadedAt: "2026-08-13T00:00:00Z",
             captureCompleteness: "definitions_only",
             cluster: topology.cluster,
-            description: "Real-SDK 50-vhost performance fixture",
+            description: "Real-SDK performance fixture",
             ownerContact: null,
             expiresAt: null,
           },
@@ -315,4 +317,115 @@ test("production Chromium full and filtered ELK layouts meet the v1 budget", asy
   for (const phase of scenarioReports) {
     expect(phase.passed, `${phase.phase} layout exceeded ${LAYOUT_BUDGET_MS} ms`).toBe(true);
   }
+});
+
+interface DenseTimings {
+  overviewMs: number;
+  overviewPanMs: number;
+  broadSearchMs: number;
+  searchAndCenterMs: number;
+  resourceDragMs: number;
+}
+
+async function dragFromCenter(page: Page, target: Locator, dx: number, dy: number): Promise<number> {
+  await target.hover();
+  const { x, y, width, height } = (await target.boundingBox())!;
+  const started = performance.now();
+  await page.mouse.down();
+  await page.mouse.move(x + width / 2 + dx, y + height / 2 + dy, { steps: 10 });
+  await page.mouse.up();
+  return started;
+}
+
+async function measureDenseGraph(browser: Browser, topology: TopologyFixture): Promise<DenseTimings> {
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 1,
+    reducedMotion: "reduce",
+    serviceWorkers: "block",
+  });
+  try {
+    const page = await context.newPage();
+    await page.route("**/api/**", (route) => fulfillApi(route, topology));
+    const navigationStarted = performance.now();
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const canvas = page.locator(".topology-canvas");
+    await expect(canvas).toHaveAttribute("data-layout-state", "ready", { timeout: 30_000 });
+    const generation = await completedLayoutGeneration(page);
+    const overview = canvas.locator(".large-graph-overview");
+    await expect(overview).toBeVisible();
+    await overview.evaluate(() => new Promise<number>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const overviewMs = performance.now() - navigationStarted;
+    await expect(canvas.locator(".resource-node")).toHaveCount(0);
+
+    const camera = canvas.locator(".react-flow__viewport");
+    const cameraTransform = () => camera.evaluate((element) => (element as HTMLElement).style.transform);
+    const fitted = await cameraTransform();
+    const panStarted = await dragFromCenter(page, canvas.locator(".react-flow__pane"), 36, 24);
+    await expect.poll(cameraTransform).not.toBe(fitted);
+    const overviewPanMs = performance.now() - panStarted;
+
+    const search = page.getByRole("searchbox", { name: "Resource name" });
+    const queueCount = topology.nodes.filter((node) => node.data.kind === "queue").length;
+    const broadSearchStarted = performance.now();
+    await search.fill("queue-");
+    await expect(page.getByText(`${queueCount} visible matches`, { exact: true })).toBeVisible();
+    const broadSearchMs = performance.now() - broadSearchStarted;
+
+    const searchStarted = performance.now();
+    await search.fill("queue-00");
+    await page.getByRole("button", { name: "queue queue-00, vhost vhost-00", exact: true }).click();
+    const card = canvas.getByRole("button", { name: "Inspect queue queue-00, vhost vhost-00" });
+    await expect.poll(() => card.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const drawing = element.closest(".topology-canvas")!.getBoundingClientRect();
+      return Math.hypot(box.left + box.width / 2 - drawing.left - drawing.width / 2,
+        box.top + box.height / 2 - drawing.top - drawing.height / 2);
+    })).toBeLessThan(3);
+    const searchAndCenterMs = performance.now() - searchStarted;
+    await expect(overview).toHaveCount(0);
+    expect(await canvas.locator(".resource-node").count()).toBeLessThan(150);
+
+    const centered = await cameraTransform();
+    const cardPosition = () => card.evaluate((element) =>
+      element.closest<HTMLElement>(".react-flow__node")!.style.transform);
+    const original = await cardPosition();
+    const dragStarted = await dragFromCenter(page, card, 29, 23);
+    await expect.poll(cardPosition).not.toBe(original);
+    const resourceDragMs = performance.now() - dragStarted;
+    expect(await cameraTransform()).toBe(centered);
+    expect(await completedLayoutGeneration(page)).toBe(generation);
+
+    return { overviewMs, overviewPanMs, broadSearchMs, searchAndCenterMs, resourceDragMs };
+  } finally {
+    await context.close();
+  }
+}
+
+test("measures usable overview and interactions on a 5,000-node SDK graph", async ({ browser }) => {
+  test.setTimeout(180_000);
+  const topology = JSON.parse(await readFile(denseTopologyPath, "utf8")) as TopologyFixture;
+  expect(topology.nodes).toHaveLength(5_000);
+  expect(topology.edges).toHaveLength(5_000);
+  const samples: DenseTimings[] = [];
+  for (let index = 0; index < WARM_UP_RUNS + RECORDED_RUNS; index += 1) {
+    const measured = await measureDenseGraph(browser, topology);
+    if (index >= WARM_UP_RUNS) samples.push(measured);
+  }
+  const metrics = Object.keys(samples[0]!) as Array<keyof DenseTimings>;
+  const report = {
+    chromium: browser.version(),
+    playwright: playwrightVersion,
+    viewport,
+    cgroupCpuMax: await readCgroupLimit("/sys/fs/cgroup/cpu.max"),
+    cgroupMemoryMax: await readCgroupLimit("/sys/fs/cgroup/memory.max"),
+    nodeCount: topology.nodes.length,
+    edgeCount: topology.edges.length,
+    warmUpRuns: WARM_UP_RUNS,
+    samples,
+    medians: Object.fromEntries(metrics.map((metric) => [metric, median(samples.map((sample) => sample[metric]))])),
+  };
+  await writeFile(denseReportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  console.log(JSON.stringify(report, null, 2));
 });
