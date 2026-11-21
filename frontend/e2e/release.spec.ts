@@ -668,6 +668,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
     await page.setViewportSize(viewport);
     const state = createState();
     await openReadyApp(page, state);
+    const sidebar = page.getByRole("complementary", { name: "Topology exploration controls" });
+    await expect(sidebar.getByRole("button", { name: "Return to graph", exact: true })).toHaveCount(0);
     const generation = await completedLayoutGeneration(page);
     const transform = await viewportTransform(page);
     const toggle = page.getByRole("button", { name: "Results & inspection" });
@@ -715,6 +717,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await expect(page.locator(".drawer-content").getByRole("button", { name: "Return to graph", exact: true })).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByRole("button", { name: "Return to graph", exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Details: relationship/ })).toBeFocused();
     }
     await page.getByRole("button", { name: "Components (2)", exact: true }).click();

@@ -96,7 +96,7 @@ export function ExplorerSidebar({
     cycleRunStatus === "queued" || cycleRunStatus === "running" || cycleRunStatus === "cancelling";
   return (
     <aside className="operations-sidebar" aria-label="Topology exploration controls">
-      <button type="button" className="text-button" onClick={onReturnToGraph}>
+      <button type="button" className="text-button sidebar-return-to-graph" onClick={onReturnToGraph}>
         Return to graph
       </button>
       <section className="sidebar-section">

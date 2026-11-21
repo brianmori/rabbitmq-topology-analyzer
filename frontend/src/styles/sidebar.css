@@ -15,6 +15,7 @@
 
 .controls-disclosure { min-width: 0; }
 .controls-disclosure > summary { display: none; }
+.sidebar-return-to-graph { display: none; }
 
 .search-matches {
   display: grid;
@@ -189,6 +190,8 @@
 }
 
 @media (max-width: 780px) {
+  .sidebar-return-to-graph { display: inline-block; }
+
   .controls-disclosure > summary {
     display: list-item;
     padding: 0.6rem;
