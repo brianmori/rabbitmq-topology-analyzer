@@ -136,6 +136,8 @@ def start_cycle_run(
         )
 
     parameters: dict[str, str | int | bool | None] = {"maxCycles": request.max_cycles}
+    if request.include_all_cross_vhost:
+        parameters["includeAllCrossVhost"] = True
     scheduler = get_job_scheduler()
     try:
         admission = scheduler.admit(

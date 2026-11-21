@@ -125,27 +125,6 @@
   border-radius: 4px;
 }
 
-.cycle-vhost-filter {
-  margin: 0.65rem 0 0;
-  padding: 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-}
-
-.cycle-vhost-filter legend {
-  padding: 0 0.2rem;
-  color: #43565e;
-  font-size: 0.7rem;
-  font-weight: 800;
-}
-
-.cycle-vhost-filter .checkbox-list {
-  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
-  max-height: 90px;
-  margin-top: 0.4rem;
-  overflow-y: auto;
-}
-
 .cycle-summary-list {
   display: grid;
   gap: 0.45rem;

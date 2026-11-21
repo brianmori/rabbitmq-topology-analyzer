@@ -243,7 +243,7 @@ export function ExplorerSidebar({
               </button>
             )}
             <label className="field-label" htmlFor="max-cycles">
-              Maximum cycles
+              Maximum single-vhost cycles
             </label>
             <input
               id="max-cycles"
@@ -258,8 +258,7 @@ export function ExplorerSidebar({
               onChange={(event) => onCycleMaxCyclesChange(event.target.value)}
             />
             <p id="max-cycles-hint" className="field-hint">
-              A positive value bounds SDK enumeration. Zero enumerates all cycles. Structural cycles
-              are configured paths; they do not prove runtime loops or guarantee delivery.
+              All cross-vhost cycles are included. Use zero to also include every single-vhost cycle.
             </p>
             {cycleMaxCyclesUnbounded && !cycleMaxCyclesError && (
               <p className="result-warning" role="alert">

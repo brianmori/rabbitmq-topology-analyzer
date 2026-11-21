@@ -13,8 +13,6 @@ interface CycleResultsProps {
   page: CyclePage | null;
   pageLoading: boolean;
   pageStatusText: string;
-  availableVhosts: ReadonlyArray<string>;
-  selectedVhosts: ReadonlySet<string>;
   sort: CycleSort;
   minLength: string;
   maxLength: string;
@@ -22,7 +20,6 @@ interface CycleResultsProps {
   detailStatusText: string;
   nodes: ReadonlyArray<TopologyNode>;
   edges: ReadonlyArray<TopologyEdge>;
-  onVhostChange: (vhost: string, selected: boolean) => void;
   onSortChange: (sort: CycleSort) => void;
   onMinLengthChange: (value: string) => void;
   onMaxLengthChange: (value: string) => void;
@@ -55,8 +52,6 @@ export function CycleResults({
   page,
   pageLoading,
   pageStatusText,
-  availableVhosts,
-  selectedVhosts,
   sort,
   minLength,
   maxLength,
@@ -64,7 +59,6 @@ export function CycleResults({
   detailStatusText,
   nodes,
   edges,
-  onVhostChange,
   onSortChange,
   onMinLengthChange,
   onMaxLengthChange,
@@ -94,8 +88,9 @@ export function CycleResults({
         <>
           {result.truncated && (
             <p className="result-warning">
-              The SDK stopped after the configured maximum. These are exact returned cycles, but
-              more cycles may exist.
+              {result.crossVhostCount === undefined
+                ? "The SDK stopped at the configured maximum, and more cycles may exist."
+                : "More single-vhost cycles exist. The cross-vhost results are complete."}
             </p>
           )}
           <div className="cycle-filter-grid">
@@ -105,7 +100,9 @@ export function CycleResults({
                 value={sort}
                 onChange={(event) => onSortChange(event.target.value as CycleSort)}
               >
-                <option value="sdk">SDK order</option>
+                <option value="sdk">
+                  {result.crossVhostCount === undefined ? "SDK order" : "Cross-vhost first"}
+                </option>
                 <option value="length_asc">Length, shortest first</option>
                 <option value="length_desc">Length, longest first</option>
               </select>
@@ -133,23 +130,6 @@ export function CycleResults({
               />
             </label>
           </div>
-          <fieldset className="cycle-vhost-filter">
-            <legend>Touches vhost</legend>
-            <p className="field-hint">No selection includes every vhost.</p>
-            <div className="checkbox-list">
-              {availableVhosts.map((vhost) => (
-                <label key={vhost}>
-                  <input
-                    type="checkbox"
-                    checked={selectedVhosts.has(vhost)}
-                    onChange={(event) => onVhostChange(vhost, event.target.checked)}
-                  />
-                  <span>{vhost}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
           <p className="operation-status">{pageStatusText}</p>
 
           {page && page.items.length === 0 && !pageLoading && (

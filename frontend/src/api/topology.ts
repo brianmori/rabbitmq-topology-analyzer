@@ -445,6 +445,7 @@ export async function startCycleRun(
   snapshotRevision: string,
   maxCycles: number,
   idempotencyKey: string,
+  includeAllCrossVhost?: boolean,
 ): Promise<CycleRunResponse> {
   const response = await apiFetch(
     "/api/cycle-runs",
@@ -454,7 +455,7 @@ export async function startCycleRun(
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
       },
-      body: JSON.stringify({ source, analysisId, snapshotRevision, maxCycles }),
+      body: JSON.stringify({ source, analysisId, snapshotRevision, maxCycles, includeAllCrossVhost }),
     },
     { ownerScoped: true },
   );

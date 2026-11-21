@@ -657,8 +657,8 @@ describe("TopologyExplorer", () => {
     render(
       <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
     );
-    expect(screen.getByRole("spinbutton", { name: "Maximum cycles" })).toHaveValue(0);
-    expect(screen.getByRole("spinbutton", { name: "Maximum cycles" })).toBeDisabled();
+    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toHaveValue(0);
+    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toBeDisabled();
     expect(screen.getByLabelText("Structural-cycle operation status")).toHaveTextContent(
       "Recovering active structural-cycle analysis…",
     );
@@ -682,11 +682,7 @@ describe("TopologyExplorer", () => {
       screen.getByRole("combobox", { name: "Sort summaries" }),
       "length_desc",
     );
-    await user.click(
-      within(screen.getByRole("group", { name: "Touches vhost" })).getByRole("checkbox", {
-        name: "/audit",
-      }),
-    );
+    await user.type(screen.getByRole("spinbutton", { name: "Minimum length" }), "2");
     expect(screen.getByLabelText("Cycle summary status")).toHaveTextContent(
       "Loading cycle summaries…",
     );
@@ -851,7 +847,7 @@ describe("TopologyExplorer", () => {
     render(
       <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
     );
-    const maxCycles = screen.getByRole("spinbutton", { name: "Maximum cycles" });
+    const maxCycles = screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" });
 
     await user.clear(maxCycles);
     await user.type(maxCycles, "0");
@@ -877,7 +873,10 @@ describe("TopologyExplorer", () => {
     const user = userEvent.setup();
     const startRun = vi
       .spyOn(topologyApi, "startCycleRun")
-      .mockResolvedValue(succeededCycleRunFixture);
+      .mockResolvedValue({
+        ...succeededCycleRunFixture,
+        result: { cycleCount: 2, truncated: true, maxCycles: 20, crossVhostCount: 1 },
+      });
     const fetchPage = vi.spyOn(topologyApi, "fetchCyclePage").mockResolvedValue(cyclePageFixture);
     const fetchDetail = vi
       .spyOn(topologyApi, "fetchCycleDetail")
@@ -890,16 +889,23 @@ describe("TopologyExplorer", () => {
 
     expect(
       await resultRegion("Structural cycles").findByText(/2 structural cycles found/),
-    ).toHaveTextContent("Results were truncated at maxCycles=2");
-    expect(screen.getByText(/more cycles may exist/)).toBeVisible();
+    ).toHaveTextContent("1 cycle spans multiple vhosts. Single-vhost results were limited to 20.");
+    expect(screen.queryByRole("group", { name: "Touches vhost" })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort summaries" })).toHaveValue("sdk");
+    expect(startRun).toHaveBeenCalledWith(
+      topologyFixture.source,
+      topologyFixture.analysisId,
+      topologyFixture.snapshotRevision,
+      20,
+      expect.any(String),
+      true,
+    );
     expect(await screen.findByRole("button", { name: /Cycle 2/ })).toBeVisible();
 
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Sort summaries" }),
       "length_desc",
     );
-    const vhostFilters = screen.getByRole("group", { name: "Touches vhost" });
-    await user.click(within(vhostFilters).getByRole("checkbox", { name: "/audit" }));
     await user.type(screen.getByRole("spinbutton", { name: "Minimum length" }), "2");
 
     await waitFor(() => {
@@ -910,7 +916,6 @@ describe("TopologyExplorer", () => {
           offset: 0,
           limit: 50,
           sort: "length_desc",
-          vhosts: ["/audit"],
           minLength: 2,
           maxLength: undefined,
         },
@@ -1122,7 +1127,7 @@ describe("TopologyExplorer", () => {
     expect(
       await resultRegion("Structural cycles").findByText(/2 structural cycles found/),
     ).toBeVisible();
-    expect(screen.getByRole("spinbutton", { name: "Maximum cycles" })).toHaveValue(2);
+    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toHaveValue(2);
     expect(fetchRun).toHaveBeenCalledWith(
       succeededCycleRunFixture.runId,
       topologyFixture.snapshotRevision,
