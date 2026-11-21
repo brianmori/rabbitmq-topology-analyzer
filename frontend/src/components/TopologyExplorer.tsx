@@ -172,6 +172,7 @@ export function TopologyExplorer({
     () => !window.matchMedia("(max-width: 780px)").matches,
   );
   const graphEntryRef = useRef<HTMLButtonElement>(null);
+  const graphDrawingRef = useRef<HTMLElement>(null);
   const controlsDisclosureRef = useRef<HTMLDetailsElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const focusDrawerRef = useRef(false);
@@ -214,7 +215,7 @@ export function TopologyExplorer({
     }
   }, []);
 
-  function returnToGraph() {
+  function focusGraph(preferFullDrawing = true) {
     if (window.matchMedia("(max-width: 780px)").matches) {
       // Close the native disclosure before positioning the page, including
       // when the browser still has an opening toggle event queued.
@@ -223,8 +224,27 @@ export function TopologyExplorer({
       setControlsOpen(false);
     }
     const entry = graphEntryRef.current;
+    const toolbar = entry?.parentElement;
+    const drawing = graphDrawingRef.current;
+    // When the controls and drawing cannot fit together, bring the drawing
+    // into view and keep keyboard focus inside the visible part of the page.
+    if (
+      preferFullDrawing &&
+      toolbar &&
+      drawing &&
+      drawing.getBoundingClientRect().bottom - toolbar.getBoundingClientRect().top > window.innerHeight
+    ) {
+      drawing.focus({ preventScroll: true });
+      drawing.scrollIntoView?.({ block: "start", inline: "nearest" });
+      return;
+    }
     entry?.focus({ preventScroll: true });
-    entry?.parentElement?.scrollIntoView?.({ block: "start", inline: "nearest" });
+    toolbar?.scrollIntoView?.({ block: "start", inline: "nearest" });
+  }
+
+  function returnToGraph() {
+    setDrawerOpen(false);
+    focusGraph();
   }
   const [activeSccRun, setActiveSccRun] = useState<SccRunResponse | null>(null);
   const [completedSccRun, setCompletedSccRun] = useState<SccRunResponse | null>(null);
@@ -1192,12 +1212,12 @@ export function TopologyExplorer({
 
   function clearCycleFocusAndShowGraph() {
     clearCycleFocus();
-    returnToGraph();
+    focusGraph();
   }
 
   function clearComponentFocusAndShowGraph() {
     setSelectedComponentIndexes(new Set());
-    returnToGraph();
+    focusGraph();
   }
 
   const emptyReason =
@@ -1329,28 +1349,30 @@ export function TopologyExplorer({
           <GraphLegend
             focus={cycleFocusActive ? "cycle" : sccFocusActive ? "components" : "explore"}
           />
-          {emptyReason ? (
-            <div className="topology-canvas canvas-empty" role="status">
-              <div>
-                <span aria-hidden="true">⌁</span>
-                <h2>Nothing to display</h2>
-                <p>{emptyReason}</p>
+          <section ref={graphDrawingRef} aria-label="Topology drawing" tabIndex={-1}>
+            {emptyReason ? (
+              <div className="topology-canvas canvas-empty" role="status">
+                <div>
+                  <span aria-hidden="true">⌁</span>
+                  <h2>Nothing to display</h2>
+                  <p>{emptyReason}</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <TopologyCanvas
-              topology={visibleTopology}
-              searchMatchIds={searchMatchIds}
-              searchFocus={searchFocus}
-              selection={selection}
-              onSelectionChange={inspect}
-              onExitCanvas={returnToGraph}
-              resetGeneration={resetGeneration}
-              componentIndexByNode={visibleComponentByNode}
-              cycleStepByNode={visibleCycleSteps.nodes}
-              cycleStepByEdge={visibleCycleSteps.edges}
-            />
-          )}
+            ) : (
+              <TopologyCanvas
+                topology={visibleTopology}
+                searchMatchIds={searchMatchIds}
+                searchFocus={searchFocus}
+                selection={selection}
+                onSelectionChange={inspect}
+                onExitCanvas={() => focusGraph(false)}
+                resetGeneration={resetGeneration}
+                componentIndexByNode={visibleComponentByNode}
+                cycleStepByNode={visibleCycleSteps.nodes}
+                cycleStepByEdge={visibleCycleSteps.edges}
+              />
+            )}
+          </section>
           <section
             ref={drawerRef}
             className={`results-drawer${drawerOpen ? " results-drawer--open" : ""}`}

@@ -695,7 +695,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       ["Run cyclic components", "Open components", "Components", "Cyclic-component operation status", "2 cyclic components found."],
       ["Run structural cycles", "Open cycles", "Cycles", "Structural-cycle operation status", "52 structural cycles found."],
     ]) {
-      await toggle.click();
+      if (await toggle.getAttribute("aria-expanded") === "true") await toggle.click();
       const start = page.getByRole("button", { name: startLabel, exact: true });
       await start.focus();
       await page.keyboard.press("Enter");
@@ -714,6 +714,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
       await page.keyboard.press("Tab");
       await expect(page.locator(".drawer-content").getByRole("button", { name: "Return to graph", exact: true })).toBeFocused();
       await page.keyboard.press("Enter");
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
       await expect(page.getByRole("button", { name: /^Details: relationship/ })).toBeFocused();
     }
     await page.getByRole("button", { name: "Components (2)", exact: true }).click();

@@ -707,7 +707,7 @@ test("explains focused scope and restores exploration while retaining real SDK r
   expect(topologyRequests).toBe(2);
 });
 
-for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 }]) {
+for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 }, { width: 780, height: 400 }]) {
   test(`navigates between focused results and the visible drawing at ${viewport.width}px`, async ({ page }) => {
     await page.setViewportSize(viewport);
     let topologyRequests = 0;
@@ -717,7 +717,7 @@ for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 
     await page.goto("/");
     await completedLayoutGeneration(page);
     const disclosure = page.locator(".controls-disclosure");
-    if (viewport.width < 780) await disclosure.locator("summary").click();
+    if (viewport.width <= 780) await disclosure.locator("summary").click();
     await page.getByRole("button", { name: "Run cyclic components" }).click();
     await page.getByRole("button", { name: "Open components", exact: true }).click();
     const component = page.getByRole("checkbox", { name: /Cyclic component 1/ });
@@ -736,25 +736,31 @@ for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 
     const transform = await camera.evaluate((element) => element.style.transform);
     const graphControls = page.getByRole("navigation", { name: "Graph inspection and results" });
     const graphEntry = graphControls.getByRole("button", { name: "Open inspection" });
+    const graphFocus = viewport.height === 400
+      ? page.getByRole("region", { name: "Topology drawing" })
+      : graphEntry;
+    const drawerToggle = drawer.getByRole("button", { name: "Results & inspection" });
 
     await drawer.getByRole("button", { name: "Return to graph" }).click();
-    await expect(graphEntry).toBeFocused();
+    await expect(drawerToggle).toHaveAttribute("aria-expanded", "false");
+    await expect(graphFocus).toBeFocused();
     await expect(graph).toBeInViewport({ ratio: 0.95 });
-    if (viewport.width < 780) await expect(disclosure).not.toHaveAttribute("open");
+    if (viewport.width <= 780) await expect(disclosure).not.toHaveAttribute("open");
 
     const openCycles = graphControls.getByRole("button", { name: "Cycles (1)", exact: true });
     await openCycles.click();
     const showCycle = path.getByRole("button", { name: "Show cycle on graph" });
     await showCycle.focus();
     await page.keyboard.press("Enter");
-    await expect(graphEntry).toBeFocused();
+    await expect(drawerToggle).toHaveAttribute("aria-expanded", "false");
+    await expect(graphFocus).toBeFocused();
     await expect(graph).toBeInViewport({ ratio: 0.95 });
     expect(await completedLayoutGeneration(page)).toBe(generation);
     expect(await camera.evaluate((element) => element.style.transform)).toBe(transform);
 
     await openCycles.click();
     await path.getByRole("button", { name: "Clear cycle focus" }).click();
-    await expect(graphEntry).toBeFocused();
+    await expect(graphFocus).toBeFocused();
     await expect(graph).toBeInViewport({ ratio: 0.95 });
     const mode = page.getByRole("region", { name: "Graph presentation" });
     await expect(mode).toContainText("Component focus");
@@ -767,7 +773,7 @@ for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 
     const clearComponent = drawer.getByRole("button", { name: "Clear component focus" });
     await clearComponent.focus();
     await page.keyboard.press("Enter");
-    await expect(graphEntry).toBeFocused();
+    await expect(graphFocus).toBeFocused();
     await expect(graph).toBeInViewport({ ratio: 0.95 });
     await expect(mode).toContainText("Exploration view");
     await expect(component).not.toBeChecked();
