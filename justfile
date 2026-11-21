@@ -94,6 +94,11 @@ e2e:
 backend-lock-check:
     cd backend && uv lock --check --offline
 
+# Prepare and validate application metadata for a proposed release tag.
+release-prepare tag:
+    uv run --directory backend --no-project python ../tools/release.py --prepare {{quote(tag)}}
+    just release-check {{quote(tag)}}
+
 # Validate application, installed package, OpenAPI, and Helm appVersion metadata.
 release-check tag:
     uv run --project backend --locked python -m tools.release {{quote(tag)}}

@@ -16,7 +16,8 @@ helm upgrade --install topology charts/rabbitmq-topology-analyzer \
   --namespace topology --create-namespace -f /path/to/values.local.yaml
 ```
 
-The default image is `ghcr.io/brianmori/rabbitmq-topology-analyzer:0.1.0`.
+The default image is `ghcr.io/brianmori/rabbitmq-topology-analyzer`, tagged with
+the `appVersion` from [Chart.yaml](Chart.yaml).
 Repository metadata does not mean this image has been published. Override
 `image.tag` for another release or set `image.digest: sha256:...` to pin an
 exact image; digest takes precedence. Use `imagePullSecrets: [{name: registry-auth}]`
@@ -135,7 +136,7 @@ release isolation, and rejected scale/auth/storage values. It is included in
 contacted by these checks. Validate the rendered resources against your target
 cluster's admission policies before installation.
 
-`just release-check v0.1.0` includes the chart's `appVersion` in application
-version consistency checks. Chart `version` is independent: increment it when
-shipping chart changes, and update `appVersion` for a new application default.
-The image publication workflow does not publish a chart archive or OCI chart.
+Run `just release-prepare TAG` from the repository root to set the chart's
+`appVersion` alongside the other application versions. Chart `version` is
+independent and changes when shipping a chart release. The image workflow
+publishes container images only.
