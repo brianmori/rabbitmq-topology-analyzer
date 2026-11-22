@@ -119,7 +119,7 @@ describe("retrying a changed snapshot in App", () => {
       expect(await screen.findByLabelText("RabbitMQ topology graph")).toHaveTextContent(
         "Updated orders",
       );
-      expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+      expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
         `${source}:${selected.analysisId}`,
       );
       expect(sessionStorage.getItem(ACTIVE_SCC_RUN_STORAGE_KEY)).toBeNull();
@@ -194,11 +194,11 @@ describe("retrying a changed snapshot in App", () => {
         expect(await screen.findByLabelText("RabbitMQ topology graph")).toHaveTextContent(
           "Other topology",
         );
-        expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+        expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
           `static:${other.analysisId}`,
         );
       } else {
-        expect(await screen.findByText("No analyses configured")).toBeVisible();
+        expect(await screen.findByText("No captures available")).toBeVisible();
         expect(screen.queryByLabelText("RabbitMQ topology graph")).not.toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Upload capture" })).toBeEnabled();
       }
@@ -257,7 +257,7 @@ describe("retrying a changed snapshot in App", () => {
 
       if (boundary === "selection") {
         await user.selectOptions(
-          screen.getByRole("combobox", { name: "Analysis" }),
+          screen.getByRole("combobox", { name: "Capture" }),
           `static:${other.analysisId}`,
         );
         expect(await screen.findByLabelText("RabbitMQ topology graph")).toHaveTextContent(
@@ -297,7 +297,7 @@ describe("retrying a changed snapshot in App", () => {
         expect(screen.getByLabelText("RabbitMQ topology graph")).toHaveTextContent(
           boundary === "selection" ? "Other topology" : "orders.events",
         );
-        expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+        expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
           `static:${boundary === "selection" ? other.analysisId : original.analysisId}`,
         );
       }

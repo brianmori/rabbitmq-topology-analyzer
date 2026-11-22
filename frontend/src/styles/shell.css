@@ -61,12 +61,38 @@
   min-width: 0;
 }
 
+.analysis-picker__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.2rem 0.5rem;
+}
+
 .analysis-picker label {
   color: #bcd0d7;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+.capture-export-button {
+  min-height: 24px;
+  color: #f8fbfc;
+}
+
+.capture-export-button:focus-visible {
+  outline-color: #f8fbfc;
+}
+
+.capture-export-error {
+  grid-column: 1 / -1;
+  color: #f8fbfc;
+  font-size: 0.76rem;
+}
+
+.capture-export-error p {
+  margin: 0;
 }
 
 .analysis-picker select {

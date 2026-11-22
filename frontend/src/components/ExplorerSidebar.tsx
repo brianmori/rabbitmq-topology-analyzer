@@ -220,9 +220,17 @@ export function ExplorerSidebar({
         </p>
         {access.capabilities.runGraphOperations ? (
           <div className="operation-controls">
-            <button type="button" aria-disabled={computeRunActive} onClick={onStartScc}>
+            <button
+              type="button"
+              aria-describedby="run-components-hint"
+              aria-disabled={computeRunActive}
+              onClick={onStartScc}
+            >
               {sccActive ? "Cyclic components running…" : "Run cyclic components"}
             </button>
+            <p id="run-components-hint" className="field-hint">
+              Find groups of resources that can all reach each other.
+            </p>
             <button type="button" className="text-button" onClick={onShowComponents}>
               Open components
             </button>
@@ -243,7 +251,7 @@ export function ExplorerSidebar({
               </button>
             )}
             <label className="field-label" htmlFor="max-cycles">
-              Maximum single-vhost cycles
+              Single-vhost cycle limit
             </label>
             <input
               id="max-cycles"
@@ -258,12 +266,13 @@ export function ExplorerSidebar({
               onChange={(event) => onCycleMaxCyclesChange(event.target.value)}
             />
             <p id="max-cycles-hint" className="field-hint">
-              All cross-vhost cycles are included. Use zero to also include every single-vhost cycle.
+              One shared limit across all vhosts. Enter 0 for no limit. Cycles that span multiple
+              vhosts are always included.
             </p>
             {cycleMaxCyclesUnbounded && !cycleMaxCyclesError && (
               <p className="result-warning" role="alert">
-                Zero enumerates all cycles and may require substantial time or memory. Keep this tab
-                open so heartbeat polling continues.
+                Searching without a limit may take a long time or use substantial memory. Keep
+                this tab open while the search runs.
               </p>
             )}
             {cycleMaxCyclesError && (
@@ -273,11 +282,15 @@ export function ExplorerSidebar({
             )}
             <button
               type="button"
+              aria-describedby="run-cycles-hint"
               aria-disabled={computeRunActive || cycleMaxCyclesError !== null}
               onClick={onStartCycle}
             >
               {cycleActive ? "Structural cycles running…" : "Run structural cycles"}
             </button>
+            <p id="run-cycles-hint" className="field-hint">
+              Find individual routes that return to where they started.
+            </p>
             <button type="button" className="text-button" onClick={onShowCycles}>
               Open cycles
             </button>

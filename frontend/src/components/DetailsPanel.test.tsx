@@ -44,7 +44,7 @@ describe("DetailsPanel", () => {
     expect(screen.queryByText("endpointAuthority")).not.toBeInTheDocument();
     expect(detailValue("Source routing key")).toBe("(empty)");
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual([
-      "Wire identity",
+      "Resource ID",
       "Resource kind",
       "Name",
       "Vhost",
@@ -78,7 +78,7 @@ describe("DetailsPanel", () => {
 
     render(<DetailsPanel selection={{ kind: "edge", id: edge.id }} nodes={[]} edges={[edge]} />);
 
-    expect(screen.getByText("Source wire identity")).toBeVisible();
+    expect(screen.getByText("Source resource ID")).toBeVisible();
     expect(detailValue("Routing key")).toBe(expected);
     expect(screen.queryByText("binding-secret")).not.toBeInTheDocument();
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual([
@@ -92,9 +92,9 @@ describe("DetailsPanel", () => {
       "Target captured resource",
       "Relationship kind",
       "Routing key",
-      "Wire identity",
-      "Source wire identity",
-      "Target wire identity",
+      "Relationship ID",
+      "Source resource ID",
+      "Target resource ID",
     ]);
   });
 
@@ -131,9 +131,9 @@ describe("DetailsPanel", () => {
     expect(detailValue("Target resource name")).toBe(target.data.name);
     expect(detailValue("Target captured resource")).toBe("No — MISSING");
     expect(detailValue("Relationship kind")).toBe("dead letter");
-    expect(detailValue("Wire identity")).toBe(edge.id);
-    expect(detailValue("Source wire identity")).toBe(source.id);
-    expect(detailValue("Target wire identity")).toBe(target.id);
+    expect(detailValue("Relationship ID")).toBe(edge.id);
+    expect(detailValue("Source resource ID")).toBe(source.id);
+    expect(detailValue("Target resource ID")).toBe(target.id);
     expect(screen.queryByText("binding-secret")).not.toBeInTheDocument();
     expect(screen.queryByText(/secret.internal|amqp:\/\/|raw-secret/)).not.toBeInTheDocument();
   });

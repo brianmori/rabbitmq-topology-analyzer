@@ -680,7 +680,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768
     await expect(page.getByRole("tab", { name: "Inspection", exact: true })).toHaveAttribute("aria-selected", "true");
     const detailsControl = page.getByRole("button", { name: "Details: queue Orders.Process, vhost /orders", exact: true });
     await expect(detailsControl).toBeInViewport();
-    await expect(page.getByRole("region", { name: "Safe details" })).toContainText("Orders.Process");
+    await expect(page.getByRole("region", { name: "Resource details" })).toContainText("Orders.Process");
     await toggle.click();
     const edge = page.getByRole("button", { name: /^Inspect shovel relationship/ }).first();
     await edge.focus();
@@ -792,7 +792,7 @@ test("selects static snapshots and inspects graph resources with the keyboard", 
   const state = createState();
   await openReadyApp(page, state);
 
-  const picker = page.getByRole("combobox", { name: "Analysis" });
+  const picker = page.getByRole("combobox", { name: "Capture" });
   await expect(picker).toHaveValue("static:orders-production");
   await picker.selectOption("static:audit-production");
   await expect(picker).toHaveValue("static:audit-production");
@@ -801,12 +801,13 @@ test("selects static snapshots and inspects graph resources with the keyboard", 
   const queue = page.getByRole("button", { name: "Inspect queue Orders.Process, vhost /orders" });
   await queue.focus();
   await page.keyboard.press("Enter");
-  const details = page.getByRole("region", { name: "Safe details" });
+  const details = page.getByRole("region", { name: "Resource details" });
   await expect(details.getByText("Orders.Process", { exact: true })).toBeVisible();
   const shovelEdge = page.getByRole("button", { name: /^Inspect shovel relationship/ }).first();
   await shovelEdge.focus();
   await page.keyboard.press("Space");
-  await expect(details.getByText("Relationship kind", { exact: true }).locator("..").locator("dd")).toHaveText("shovel");
+  const relationship = page.getByRole("region", { name: "Relationship details" });
+  await expect(relationship.getByText("Relationship kind", { exact: true }).locator("..").locator("dd")).toHaveText("shovel");
 
   await expect(page.getByText(/offline configuration snapshot/i)).toContainText(
     "Configured paths do not guarantee message delivery",
@@ -833,7 +834,7 @@ test.describe("selected snapshot provenance", () => {
     second.loadedAt = "2026-08-14T10:30:45.123456Z";
     await openReadyApp(page, state);
 
-    const picker = page.getByRole("combobox", { name: "Analysis" });
+    const picker = page.getByRole("combobox", { name: "Capture" });
     const provenance = page.getByRole("group", { name: "Selected snapshot" });
     await expect(picker).toHaveAccessibleDescription("Loaded in app: 2026-08-13 08:00:00 UTC");
     await expect(provenance.locator("time")).toHaveAttribute("datetime", first.loadedAt);
@@ -862,7 +863,7 @@ test.describe("selected snapshot provenance", () => {
       const first = state.catalogue.static[0]!;
       await openReadyApp(page, state);
 
-      const picker = page.getByRole("combobox", { name: "Analysis" });
+      const picker = page.getByRole("combobox", { name: "Capture" });
       const provenance = page.getByRole("group", { name: "Selected snapshot" });
       await expect(provenance).toBeVisible();
       await expect(provenance.locator("time")).toBeVisible();
@@ -1077,7 +1078,7 @@ test("uploads both evidence modes, preserves an identical refresh, replaces, and
   await dialog.getByRole("button", { name: "Delete capture" }).focus();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+  await expect(page.getByRole("combobox", { name: "Capture" })).toHaveValue(
     "static:orders-production",
   );
   expect(state.catalogue.session).toHaveLength(0);
@@ -1110,13 +1111,14 @@ test("retains SCC and cycle results, pages, and focuses a cross-vhost shovel pat
   const crossVhostComponent = page.getByRole("checkbox", { name: /Cyclic component 2/ });
   await crossVhostComponent.focus();
   await page.keyboard.press("Space");
-  await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
+  const clearComponent = componentResults.getByRole("button", { name: "Clear component filter" });
+  await expect(clearComponent).toBeVisible();
   await expect(canvas.locator(".resource-node--scc")).toHaveCount(4);
   await expect(canvas.locator(".resource-node--scc.scc-tone-0")).toHaveCount(1);
   await expect(canvas.locator(".resource-node--scc.scc-tone-1")).toHaveCount(3);
   await expect(canvas.getByText(/^C\d+$/)).toHaveCount(0);
   const crossVhostResult = componentResults.locator(".scc-component-row").nth(1);
-  await crossVhostResult.getByText("Show complete membership").click();
+  await crossVhostResult.getByText("Show all resources").click();
   await expect(crossVhostResult.getByText("shovel orders-to-audit in /orders", { exact: true })).toBeVisible();
 
   const startCycles = page.getByRole("button", { name: "Run structural cycles" });
@@ -1148,12 +1150,12 @@ test("retains SCC and cycle results, pages, and focuses a cross-vhost shovel pat
   await expect(page.getByRole("button", { name: /Cycle 52/ })).toBeVisible();
   expect(state.cyclePageOffsets).toContain(50);
 
-  const clearCycle = page.getByRole("button", { name: "Clear cycle focus" });
+  const clearCycle = page.getByRole("article", { name: "Cycle 2 path" }).getByRole("button", { name: "Clear cycle filter" });
   await clearCycle.focus();
   await page.keyboard.press("Enter");
   await page.getByRole("tab", { name: "Components", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
-  await page.getByRole("button", { name: "Clear component focus" }).press("Enter");
+  await expect(clearComponent).toBeVisible();
+  await clearComponent.press("Enter");
   expect(state.sccStarts).toBe(1);
   expect(state.cycleStarts).toBe(1);
 });
@@ -1194,7 +1196,7 @@ test("cancels active work and reconciles an expired snapshot", async ({ page }) 
 
   state.sccMode = "missing";
   await page.getByRole("button", { name: "Run cyclic components" }).press("Enter");
-  await expect(page.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+  await expect(page.getByRole("combobox", { name: "Capture" })).toHaveValue(
     "static:audit-production",
   );
   await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
@@ -1295,7 +1297,7 @@ test("draws distinct parallel, reciprocal and self-loop paths with individually 
   // in graph coordinates so fit-to-view zoom does not change this assertion.
   expect(Math.max(loop.nodeTop - loop.topBend, loop.bottomBend - loop.nodeBottom) / loop.scale)
     .toBeGreaterThanOrEqual(15);
-  const details = page.getByRole("region", { name: "Safe details" });
+  const details = page.getByRole("region", { name: "Relationship details" });
   const inspectors = page.locator(".edge-inspect-button");
   for (const edge of edges) {
     const inspector = page.locator(`.edge-inspect-button[data-edge-id="${edge.id}"]`);
@@ -1468,7 +1470,7 @@ test("retains exact parallel and self-loop wire IDs through real-canvas cycle fo
   await completedLayoutGeneration(page);
   await page.locator(".topology-canvas").scrollIntoViewIfNeeded();
   expect((await renderedEdgeGeometry(page, [edges[4]!]))[0]!.selfLoopOutsideBody).toBe(true);
-  await page.getByRole("button", { name: "Clear cycle focus" }).click();
+  await page.getByRole("article", { name: "Cycle 2 path" }).getByRole("button", { name: "Clear cycle filter" }).click();
   await expect.poll(ids).toEqual(edges.map((edge) => edge.id).sort());
   await completedLayoutGeneration(page);
   await page.locator(".topology-canvas").scrollIntoViewIfNeeded();
@@ -1512,7 +1514,7 @@ for (const operation of ["scc", "cycle"] as const) {
     await page.getByRole("button", { name: label }).click();
     await expect(page.getByRole("button", { name: "Inspect exchange revised.orders.events, vhost /orders" })).toBeVisible();
     await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
-    await expect(page.getByRole("combobox", { name: "Analysis" })).toHaveValue(`static:${selected.analysisId}`);
+    await expect(page.getByRole("combobox", { name: "Capture" })).toHaveValue(`static:${selected.analysisId}`);
     await expect(page.getByRole("button", { name: /Clear .* focus/ })).toHaveCount(0);
     await expect(page.getByRole("article", { name: "Cycle 2 path" })).toHaveCount(0);
     expect(await page.evaluate(() => [

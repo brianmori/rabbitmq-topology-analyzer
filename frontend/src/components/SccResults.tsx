@@ -1,6 +1,7 @@
 import type { SccRunResponse, TopologyNode } from "../types/topology";
 
 interface SccResultsProps {
+  canRun: boolean;
   completedRun: SccRunResponse | null;
   statusText: string;
   selectedComponentIndexes: ReadonlySet<number>;
@@ -21,6 +22,7 @@ function nodePreview(node: TopologyNode | undefined, nodeId: string): string {
 }
 
 export function SccResults({
+  canRun,
   completedRun,
   statusText,
   selectedComponentIndexes,
@@ -35,17 +37,25 @@ export function SccResults({
       <div className="result-heading-row">
         <div>
           <h3 id="scc-results-heading">Cyclic components</h3>
-          <p className="muted">SDK strongly connected components that contain a directed cycle.</p>
+          <p className="muted">
+            A cyclic component groups resources that can all reach each other along configured
+            routes. If an exchange routes to two queues and both queues have dead-letter routes
+            back to it, all three resources belong to the same component. A resource that routes
+            directly back to itself can also form a component on its own.
+          </p>
         </div>
         {selectedComponentIndexes.size > 0 && (
           <button type="button" className="text-button" onClick={onClearFocus}>
-            Clear component focus
+            Clear component filter
           </button>
         )}
       </div>
 
       <p className="operation-status">{statusText}</p>
 
+      {canRun && !completedRun && !statusText && (
+        <p className="result-empty">Choose Run cyclic components in Operations to see results here.</p>
+      )}
       {completedRun?.status === "succeeded" && components.length === 0 && (
         <p className="result-empty">No cyclic components were found in this snapshot.</p>
       )}
@@ -83,7 +93,7 @@ export function SccResults({
                 </span>
               </label>
               <details>
-                <summary>Show complete membership</summary>
+                <summary>Show all resources</summary>
                 <ul>
                   {component.nodeIds.map((nodeId) => (
                     <li key={nodeId}>{nodeDescription(nodeById.get(nodeId), nodeId)}</li>

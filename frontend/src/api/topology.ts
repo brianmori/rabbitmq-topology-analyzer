@@ -379,6 +379,31 @@ export async function fetchTopology(
   return response.json() as Promise<TopologyResponse>;
 }
 
+/** Fetches a versioned topology file for the exact graph the user is viewing. */
+export async function fetchTopologyExport(
+  snapshot: Pick<TopologyResponse, "source" | "analysisId" | "snapshotRevision">,
+  signal: AbortSignal,
+): Promise<{ blob: Blob; filename: string }> {
+  const authentication = authenticationGeneration;
+  const query = new URLSearchParams({
+    source: snapshot.source,
+    analysis_id: snapshot.analysisId,
+    snapshot_revision: snapshot.snapshotRevision,
+  });
+  const response = await apiFetch(`/api/topology/export?${query}`, { signal }, { ownerScoped: true });
+  if (!response.ok) {
+    throw await apiError(response, "topology_export_unavailable");
+  }
+  const disposition = response.headers.get("Content-Disposition");
+  const filename = disposition?.match(/^attachment; filename="([a-z0-9._-]+\.topology\.json)"$/)?.[1];
+  if (!filename || response.headers.get("Content-Type")?.split(";")[0] !== "application/json") {
+    throw new ApiError(502, "invalid_topology_export", "Invalid topology export response.", null);
+  }
+  const blob = await response.blob();
+  assertAuthenticationGeneration(authentication);
+  return { blob, filename };
+}
+
 /** Starts or idempotently replays one cyclic-component analysis run. */
 export async function startSccRun(
   source: AnalysisSource,

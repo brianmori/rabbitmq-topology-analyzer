@@ -202,7 +202,7 @@ describe("expired operation results in App", () => {
     await act(async () => {});
 
     expect(screen.queryByRole("article", { name: "Cycle 2 path" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear cycle focus" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear cycle filter" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cycle 1/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Inspection" }));
     expect(screen.getByText("Select a resource or relationship to inspect it.")).toBeVisible();
@@ -254,7 +254,7 @@ describe("expired operation results in App", () => {
       expect(reads()).toBe(1);
       expect(sessionStorage.getItem(ACTIVE_CYCLE_RUN_STORAGE_KEY)).toBeNull();
       expect(screen.queryByRole("button", { name: "Cancel analysis" })).not.toBeInTheDocument();
-      expect(screen.getByRole("combobox", { name: "Analysis" })).toBeEnabled();
+      expect(screen.getByRole("combobox", { name: "Capture" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Run structural cycles" })).toBeEnabled();
 
       routes["/api/cycle-runs"] = { body: freshRun };
@@ -325,7 +325,7 @@ describe("expired operation results in App", () => {
       await pending.promise;
     });
     expect(screen.queryByRole("article", { name: "Cycle 2 path" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear cycle focus" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear cycle filter" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("RabbitMQ topology graph")).toHaveTextContent(
       "n1.default-exchange",
     );
@@ -393,7 +393,7 @@ describe("expired operation results in App", () => {
       await user.click(screen.getByRole("button", { name: "Run structural cycles" }));
 
       if (state === "missing") {
-        expect(await screen.findByText("No analyses configured")).toBeVisible();
+        expect(await screen.findByText("No captures available")).toBeVisible();
         expect(screen.queryByLabelText("RabbitMQ topology graph")).not.toBeInTheDocument();
       } else {
         await waitFor(() =>
@@ -454,7 +454,7 @@ describe("expired operation results in App", () => {
     await screen.findByLabelText("RabbitMQ topology graph");
     await user.click(screen.getByRole("button", { name: "Run structural cycles" }));
     await act(async () => {
-      fireEvent.change(screen.getByRole("combobox", { name: "Analysis" }), {
+      fireEvent.change(screen.getByRole("combobox", { name: "Capture" }), {
         target: { value: `static:${other.analysisId}` },
       });
       pending.resolve(Response.json(notFound.body, { status: 404 }));
@@ -462,7 +462,7 @@ describe("expired operation results in App", () => {
     });
 
     expect(await screen.findByLabelText("RabbitMQ topology graph")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
       `static:${other.analysisId}`,
     );
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/analyses")).toHaveLength(1);
@@ -492,7 +492,7 @@ describe("expired operation results in App", () => {
       );
       if (boundary === "selection") {
         await user.selectOptions(
-          screen.getByRole("combobox", { name: "Analysis" }),
+          screen.getByRole("combobox", { name: "Capture" }),
           `static:${other.analysisId}`,
         );
       } else {
@@ -507,7 +507,7 @@ describe("expired operation results in App", () => {
         await pending.promise;
       });
       expect(screen.getByLabelText("RabbitMQ topology graph")).toBeVisible();
-      expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+      expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
         `static:${boundary === "selection" ? other.analysisId : topologyFixture.analysisId}`,
       );
       expect(sessionStorage.getItem(ACTIVE_CYCLE_RUN_STORAGE_KEY)).toBe(
@@ -539,7 +539,7 @@ describe("expired operation results in App", () => {
       await waitFor(() => expect(catalogueReads).toBe(2));
       if (boundary === "selection") {
         await user.selectOptions(
-          screen.getByRole("combobox", { name: "Analysis" }),
+          screen.getByRole("combobox", { name: "Capture" }),
           `static:${other.analysisId}`,
         );
       } else {
@@ -556,7 +556,7 @@ describe("expired operation results in App", () => {
         await pending.promise;
       });
       expect(screen.getByLabelText("RabbitMQ topology graph")).toBeVisible();
-      expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+      expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
         `static:${boundary === "selection" ? other.analysisId : topologyFixture.analysisId}`,
       );
       expect(sessionStorage.getItem(ACTIVE_SCC_RUN_STORAGE_KEY)).toBe("new-workspace-scc-recovery");

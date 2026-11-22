@@ -609,7 +609,7 @@ describe("TopologyExplorer", () => {
       <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
     );
     await user.click(screen.getByRole("button", { name: "Inspect test queue" }));
-    const details = within(screen.getByRole("region", { name: "Safe details" }));
+    const details = within(screen.getByRole("region", { name: "Resource details" }));
     expect(
       details.queryByText("Select a resource or relationship to inspect it."),
     ).not.toBeInTheDocument();
@@ -657,8 +657,9 @@ describe("TopologyExplorer", () => {
     render(
       <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
     );
-    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toHaveValue(0);
-    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toBeDisabled();
+    const maxCycles = screen.getByRole("spinbutton", { name: "Single-vhost cycle limit" });
+    expect(maxCycles).toHaveValue(0);
+    expect(maxCycles).toBeDisabled();
     expect(screen.getByLabelText("Structural-cycle operation status")).toHaveTextContent(
       "Recovering active structural-cycle analysis…",
     );
@@ -739,6 +740,29 @@ describe("TopologyExplorer", () => {
     );
   });
 
+  it("shows first-run guidance only when the current user can run the analysis", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
+    );
+    const componentPrompt = "Choose Run cyclic components in Operations to see results here.";
+    const cyclePrompt = "Choose Run structural cycles in Operations to see results here.";
+
+    await user.click(screen.getByRole("tab", { name: "Components" }));
+    expect(resultRegion("Cyclic components").getByText(componentPrompt)).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "Cycles" }));
+    expect(resultRegion("Structural cycles").getByText(cyclePrompt)).toBeVisible();
+
+    const access = {
+      ...accessFixture,
+      capabilities: { ...accessFixture.capabilities, runGraphOperations: false },
+    };
+    rerender(<TopologyExplorer access={access} topology={topologyFixture} resetGeneration={0} />);
+    expect(resultRegion("Structural cycles").queryByText(cyclePrompt)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Components" }));
+    expect(resultRegion("Cyclic components").queryByText(componentPrompt)).not.toBeInTheDocument();
+  });
+
   it("runs SCC analysis and lets selected complete memberships override exploration hiding", async () => {
     const user = userEvent.setup();
     vi.spyOn(topologyApi, "startSccRun").mockResolvedValue(succeededSccRunFixture);
@@ -755,10 +779,10 @@ describe("TopologyExplorer", () => {
 
     expect(screen.getByText(/Node IDs:/)).toHaveTextContent("n1.orders-exchange,n1.orders-queue");
     expect(screen.getByText(/Edge IDs:/)).toHaveTextContent("e1.0");
-    await user.click(screen.getAllByText("Show complete membership")[0]!);
+    await user.click(screen.getAllByText("Show all resources")[0]!);
     expect(screen.getByText("exchange orders.events in /orders")).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "Clear component focus" }));
+    await user.click(resultRegion("Cyclic components").getByRole("button", { name: "Clear component filter" }));
     expect(screen.getByText(/Node IDs:/)).not.toHaveTextContent("n1.orders-exchange");
     expect(screen.getByText(/Node IDs:/)).toHaveTextContent("n1.orders-queue");
   });
@@ -847,20 +871,20 @@ describe("TopologyExplorer", () => {
     render(
       <TopologyExplorer access={accessFixture} topology={topologyFixture} resetGeneration={0} />,
     );
-    const maxCycles = screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" });
+    const maxCycles = screen.getByRole("spinbutton", { name: "Single-vhost cycle limit" });
 
     await user.clear(maxCycles);
     await user.type(maxCycles, "0");
 
     expect(
-      screen.getByText(/Zero enumerates all cycles and may require substantial time or memory/),
+      screen.getByText(/Searching without a limit may take a long time or use substantial memory/),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Run structural cycles" })).toBeEnabled();
 
     fireEvent.change(maxCycles, { target: { value: "00" } });
 
     expect(
-      screen.getByText(/Zero enumerates all cycles and may require substantial time or memory/),
+      screen.getByText(/Searching without a limit may take a long time or use substantial memory/),
     ).toBeVisible();
 
     await user.clear(maxCycles);
@@ -1072,7 +1096,7 @@ describe("TopologyExplorer", () => {
     });
 
     expect(screen.queryByRole("article", { name: "Cycle 2 path" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Clear cycle focus" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear cycle filter" })).not.toBeInTheDocument();
     expect(screen.getByText(/Edge IDs:/)).toHaveTextContent("e1.0,e1.1,e1.2,e1.3,e1.4");
     expect(screen.getByRole("status", { name: "Cycle detail status" })).toBeEmptyDOMElement();
   });
@@ -1127,7 +1151,7 @@ describe("TopologyExplorer", () => {
     expect(
       await resultRegion("Structural cycles").findByText(/2 structural cycles found/),
     ).toBeVisible();
-    expect(screen.getByRole("spinbutton", { name: "Maximum single-vhost cycles" })).toHaveValue(2);
+    expect(screen.getByRole("spinbutton", { name: "Single-vhost cycle limit" })).toHaveValue(2);
     expect(fetchRun).toHaveBeenCalledWith(
       succeededCycleRunFixture.runId,
       topologyFixture.snapshotRevision,
@@ -1171,7 +1195,7 @@ describe("TopologyExplorer", () => {
     await user.click(screen.getByRole("button", { name: "Inspect test queue" }));
     expect(screen.getByRole("button", { name: "Results & inspection" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("tab", { name: "Inspection" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("region", { name: "Safe details" })).toHaveTextContent("Orders.Process");
+    expect(screen.getByRole("region", { name: "Resource details" })).toHaveTextContent("Orders.Process");
     expect(screen.getByRole("button", { name: "Details: queue Orders.Process, vhost /orders" })).toBeVisible();
   });
 
@@ -1189,16 +1213,16 @@ describe("TopologyExplorer", () => {
     const choices = screen.getByRole("group", { name: "Visible resource matches" });
     expect(within(choices).getByRole("button", { name: "queue Orders.Process, vhost /orders" })).toHaveFocus();
     await user.keyboard("{End}{Enter}");
-    let details = within(screen.getByRole("region", { name: "Safe details" }));
+    let details = within(screen.getByRole("region", { name: "Resource details" }));
     expect(details.getByText("/other", { exact: true })).toBeVisible();
     expect(details.getByText(duplicate.id, { exact: true })).toBeVisible();
     await user.keyboard("{Home}{Enter}");
-    details = within(screen.getByRole("region", { name: "Safe details" }));
+    details = within(screen.getByRole("region", { name: "Resource details" }));
     expect(details.getByText("/orders", { exact: true })).toBeVisible();
     await user.click(within(screen.getByRole("group", { name: "Vhost scope" })).getByRole("checkbox", { name: "/orders" }));
     expect(within(choices).queryByRole("button", { pressed: true })).not.toBeInTheDocument();
     expect(screen.getByText("1 visible match")).toBeVisible();
-    expect(screen.getByRole("region", { name: "Safe details" })).toHaveTextContent("Select a resource");
+    expect(screen.getByRole("region", { name: /^Details$/ })).toHaveTextContent("Select a resource");
     await user.clear(search);
     await user.type(search, "no-such-resource");
     expect(screen.getByText("0 visible matches")).toBeVisible();
@@ -1251,7 +1275,7 @@ describe("TopologyExplorer", () => {
     await user.click(screen.getByRole("button", { name: "Run structural cycles" }));
     await user.click(await screen.findByRole("button", { name: /Cycle 2/ }));
 
-    expect(await screen.findByRole("button", { name: "Clear cycle focus" })).toBeVisible();
+    expect(await resultRegion("Structural cycles").findByRole("button", { name: "Clear cycle filter" })).toBeVisible();
     expect(screen.getByText(/Node IDs:/)).toHaveTextContent(
       "n1.orders-queue,n1.audit-queue,n1.cross-vhost-shovel",
     );
@@ -1267,7 +1291,7 @@ describe("TopologyExplorer", () => {
     expect(resultRegion("Cyclic components").getByText("2 cyclic components found.")).toBeVisible();
     await user.click(screen.getByRole("tab", { name: "Cycles" }));
 
-    await user.click(screen.getByRole("button", { name: "Clear cycle filter" }));
+    await user.click(within(screen.getByRole("region", { name: "Graph presentation" })).getByRole("button", { name: "Clear cycle filter" }));
 
     expect(screen.getByText(/Node IDs:/)).toHaveTextContent("n1.orders-exchange,n1.orders-queue");
     expect(screen.getByText(/Cycle node steps:/)).not.toHaveTextContent("P1");

@@ -322,8 +322,15 @@ export function CaptureManager({
               </p>
             )}
           </div>
-          <fieldset className="capture-form__observations" disabled={busy || operationActive}>
-            <legend>Optional complete observation pair</legend>
+          <fieldset
+            className="capture-form__observations"
+            disabled={busy || operationActive}
+            aria-describedby="capture-observations-hint"
+          >
+            <legend>Queue and exchange exports (optional)</legend>
+            <p id="capture-observations-hint" className="field-hint">
+              If you provide these exports, upload both from the same capture.
+            </p>
             <div>
               <label>
                 Queue observations

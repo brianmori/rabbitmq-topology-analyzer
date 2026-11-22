@@ -25,6 +25,6 @@ def reject_query_fields(request: Request) -> None:
 
 
 class SnapshotRevisionQuery(StrictQuery):
-    """Require one exact snapshot revision for an owned run resource."""
+    """Require one exact snapshot revision for a snapshot-scoped request."""
 
     snapshot_revision: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")

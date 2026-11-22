@@ -1,6 +1,8 @@
 import json
+from dataclasses import replace
 from time import perf_counter
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,11 +11,13 @@ from rabbitmq_management_sdk.topology import NodeId, NodeKind
 
 from analyses.snapshots import SnapshotMetadata, create_analysis_snapshot
 from core import state
-from core.security import AuthMode, Principal, get_principal
+from core.security import AppRole, AuthMode, Principal, get_principal
+from core.session import OwnerContext
 from core.state import (
     AnalysisSource,
     CaptureCompleteness,
     configure_analysis_store,
+    publish_session_analysis,
     replace_static_analyses,
 )
 from main import app
@@ -305,3 +309,84 @@ def test_topology_rejects_unknown_query_fields_for_a_real_sdk_snapshot(tmp_path:
     assert malformed.json()["error"]["issues"] == [
         {"field": "query", "code": "extra_forbidden", "message": "Unknown field."},
     ]
+
+
+def test_topology_export_downloads_the_complete_safe_sdk_graph(tmp_path: Path) -> None:
+    snapshot = _sdk_loaded_snapshot(tmp_path)
+    query = {"source": "static", "analysis_id": snapshot.analysis_id}
+    export_query = {**query, "snapshot_revision": snapshot.snapshot_revision}
+    with TestClient(app) as client:
+        replace_static_analyses({snapshot.analysis_id: snapshot})
+        graph = client.get("/api/topology", params=query).json()
+        download = client.get("/api/topology/export", params=export_query)
+        repeated = client.get("/api/topology/export", params=export_query)
+        missing_revision = client.get("/api/topology/export", params=query)
+
+    assert download.status_code == 200
+    assert download.headers["Content-Type"] == "application/json"
+    assert download.headers["Content-Disposition"] == 'attachment; filename="orders-fixture.topology.json"'
+    assert download.headers["Cache-Control"] == "no-store"
+    assert repeated.content == download.content
+    assert missing_revision.status_code == 422
+    body = download.json()
+    assert body == {
+        "schemaVersion": 1,
+        "source": "static",
+        "analysisId": snapshot.analysis_id,
+        "label": snapshot.label,
+        "snapshotRevision": snapshot.snapshot_revision,
+        "loadedAt": snapshot.loaded_at.isoformat().replace("+00:00", "Z"),
+        "captureCompleteness": "definitions_only",
+        "cluster": graph["cluster"],
+        "vhosts": ["orders"],
+        "nodes": [
+            {"id": node["id"], "type": node["type"], "data": node["data"]}
+            for node in graph["nodes"]
+        ],
+        "edges": graph["edges"],
+    }
+    for secret in ("binding-secret", "super-secret", "secret.internal", "amqp091"):
+        assert secret not in download.text
+
+
+def test_topology_export_enforces_viewer_ownership_and_revision(tmp_path: Path) -> None:
+    snapshot = replace(_sdk_loaded_snapshot(tmp_path), source=AnalysisSource.SESSION)
+    owner = OwnerContext(principal_id="export-viewer", session_id=str(uuid4()))
+    query = {
+        "source": "session",
+        "analysis_id": snapshot.analysis_id,
+        "snapshot_revision": snapshot.snapshot_revision,
+    }
+
+    async def viewer() -> Principal:
+        return Principal(owner.principal_id, frozenset({AppRole.VIEWER}), AuthMode.NONE)
+
+    async def no_role() -> Principal:
+        return Principal(owner.principal_id, frozenset(), AuthMode.NONE)
+
+    with TestClient(app) as client:
+        publish_session_analysis(owner, snapshot)
+        app.dependency_overrides[get_principal] = viewer
+        headers = {"X-Session-Token": owner.session_id}
+        download = client.get("/api/topology/export", params=query, headers=headers)
+        conflict = client.get(
+            "/api/topology/export",
+            params={**query, "snapshot_revision": "sha256:" + "b" * 64},
+            headers=headers,
+        )
+        other_owner = client.get(
+            "/api/topology/export", params=query, headers={"X-Session-Token": str(uuid4())}
+        )
+        missing_session = client.get("/api/topology/export", params=query)
+        app.dependency_overrides[get_principal] = no_role
+        forbidden = client.get("/api/topology/export", params=query, headers=headers)
+
+    assert download.status_code == 200
+    assert download.json()["source"] == "session"
+    assert conflict.status_code == 409
+    assert conflict.json()["error"]["code"] == "snapshot_revision_mismatch"
+    assert other_owner.status_code == 404
+    assert missing_session.status_code == 400
+    assert forbidden.status_code == 403
+    for error in (conflict, other_owner, missing_session, forbidden):
+        assert "Content-Disposition" not in error.headers

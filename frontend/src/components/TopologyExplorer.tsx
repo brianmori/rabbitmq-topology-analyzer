@@ -1446,6 +1446,7 @@ export function TopologyExplorer({
                   hidden={drawerTab !== "Components"}
                 >
                   <SccResults
+                    canRun={access.capabilities.runGraphOperations}
                     completedRun={completedSccRun}
                     statusText={currentSccStatusText}
                     selectedComponentIndexes={selectedComponentIndexes}
@@ -1471,6 +1472,7 @@ export function TopologyExplorer({
                   hidden={drawerTab !== "Cycles"}
                 >
                   <CycleResults
+                    canRun={access.capabilities.runGraphOperations}
                     completedRun={completedCycleRun}
                     runStatusText={currentCycleRunStatusText}
                     page={cyclePage}

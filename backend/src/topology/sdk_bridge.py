@@ -17,6 +17,7 @@ from rabbitmq_management_sdk.topology import TopologyNode as SdkTopologyNode
 from analyses.schemas import cluster_summary
 from topology.schemas import (
     ExchangeNodeData,
+    GraphNode,
     GraphPosition,
     QueueNodeData,
     SafeShovelEndpoint,
@@ -25,6 +26,7 @@ from topology.schemas import (
     TopologyEdge,
     TopologyEdgeData,
     TopologyEdgeKind,
+    TopologyExport,
     TopologyNode,
     TopologyNodeData,
     TopologyNodeKind,
@@ -156,4 +158,21 @@ def serialize_topology(snapshot: AnalysisSnapshot) -> TopologyResponse:
         cluster=cluster_summary(snapshot),
         nodes=tuple(nodes),
         edges=edges,
+    )
+
+
+def serialize_topology_export(snapshot: AnalysisSnapshot) -> TopologyExport:
+    """Use the same safe graph projection for the file and the workbench."""
+    graph = serialize_topology(snapshot)
+    return TopologyExport(
+        source=graph.source,
+        analysis_id=graph.analysis_id,
+        label=snapshot.label,
+        snapshot_revision=graph.snapshot_revision,
+        loaded_at=snapshot.loaded_at,
+        capture_completeness=snapshot.capture_completeness,
+        cluster=graph.cluster,
+        vhosts=tuple(sorted(vhost.name for vhost in snapshot.topology.vhosts)),
+        nodes=tuple(GraphNode(id=node.id, type=node.type, data=node.data) for node in graph.nodes),
+        edges=graph.edges,
     )

@@ -141,7 +141,7 @@ function installWorkspace(source: AnalysisSource = "static") {
 async function expectRevised(workspace: ReturnType<typeof installWorkspace>) {
   await waitFor(() => expect(screen.getByLabelText("RabbitMQ topology graph"))
     .toHaveTextContent("Revised orders"));
-  expect(screen.getByRole("combobox", { name: "Analysis" }))
+  expect(screen.getByRole("combobox", { name: "Capture" }))
     .toHaveValue(`${workspace.original.source}:${workspace.original.analysisId}`);
   expect(workspace.reads("/api/analyses")).toBe(2);
   expect(workspace.reads(topologyUrl(workspace.original))).toBe(2);
@@ -367,7 +367,7 @@ describe("operation revision changes in a ready App", () => {
       sessionStorage.setItem(ACTIVE_CYCLE_RUN_STORAGE_KEY, "new-workspace-recovery");
     }
     await act(async () => {
-      if (boundary === "selection") fireEvent.change(screen.getByRole("combobox", { name: "Analysis" }), {
+      if (boundary === "selection") fireEvent.change(screen.getByRole("combobox", { name: "Capture" }), {
         target: { value: `static:${workspace.other.analysisId}` },
       });
       if (boundary === "unmount") view.unmount();
@@ -406,7 +406,7 @@ describe("operation revision changes in a ready App", () => {
       await user.click(screen.getByRole("button", { name: startLabel("scc") }));
       await waitFor(() => expect(held).toBe(true));
       if (boundary === "selection") {
-        await user.selectOptions(screen.getByRole("combobox", { name: "Analysis" }),
+        await user.selectOptions(screen.getByRole("combobox", { name: "Capture" }),
           `static:${workspace.other.analysisId}`);
       } else if (boundary === "authentication") {
         await user.click(screen.getByRole("button", { name: "Sign out" }));

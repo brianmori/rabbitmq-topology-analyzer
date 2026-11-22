@@ -176,7 +176,8 @@ export async function runCycle(page: Page): Promise<{ runId: string; snapshotRev
     page.getByRole("region", { name: "Structural cycles" }).getByText("1 structural cycle found."),
   ).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: /Cycle 1/ }).click();
-  await expect(page.getByRole("button", { name: "Clear cycle focus" })).toBeVisible();
+  const path = page.getByRole("article", { name: "Cycle 1 path" });
+  await expect(path.getByRole("button", { name: "Clear cycle filter" })).toBeVisible();
   return run;
 }
 

@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
+import type { TopologyResponse } from "../src/types/topology.js";
 import { completedLayoutGeneration } from "./layout-support.js";
 
 const cyclicDefinitions = resolve(import.meta.dirname, "fixtures/static/cycle.definitions.json");
@@ -58,7 +59,7 @@ test("loads the catalogue and runs real analyses over plain HTTP on a private ho
   origin.hostname = "topology.test";
   await page.goto(origin.href);
   expect(await page.evaluate(() => isSecureContext)).toBe(false);
-  await expect(page.getByRole("combobox", { name: "Analysis" })).toHaveValue("static:e2e-static-cycle");
+  await expect(page.getByRole("combobox", { name: "Capture" })).toHaveValue("static:e2e-static-cycle");
 
   const scc = page.waitForResponse((response) => isApiResponse(response, "POST", "/api/scc-runs"));
   await page.getByRole("button", { name: "Run cyclic components" }).click();
@@ -69,6 +70,46 @@ test("loads the catalogue and runs real analyses over plain HTTP on a private ho
   await page.getByRole("button", { name: "Run structural cycles" }).click();
   expect((await cycle).status()).toBe(202);
   await expect(page.getByRole("status", { name: "Structural-cycle operation status" })).toContainText("1 structural cycle found.");
+});
+
+test("downloads the full SDK topology even when graph filters hide every resource", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 650 });
+  const graphResponse = page.waitForResponse((response) => isApiResponse(response, "GET", "/api/topology"));
+  await page.goto("/");
+  const graph: TopologyResponse = await (await graphResponse).json();
+  await layoutReady(page);
+  await page.getByRole("button", { name: "Select none", exact: true }).click();
+  await expect(page.getByText(/No vhosts selected/)).toBeVisible();
+
+  const exportButton = page.getByRole("button", { name: "Export topology as JSON" });
+  await expect(exportButton).toBeInViewport();
+  await page.getByRole("banner").screenshot({ path: testInfo.outputPath("export-topology.png") });
+  const downloading = page.waitForEvent("download");
+  await exportButton.press("Enter");
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe("e2e-static-cycle.topology.json");
+  const exported = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(exported).toMatchObject({
+    schemaVersion: 1,
+    source: graph.source,
+    analysisId: graph.analysisId,
+    snapshotRevision: graph.snapshotRevision,
+    captureCompleteness: "definitions_only",
+    vhosts: ["/"],
+  });
+  expect(exported.nodes).toEqual(graph.nodes.map(({ id, type, data }) => ({ id, type, data })));
+  expect(exported.edges).toEqual(graph.edges);
+  await expect(page.getByText(/No vhosts selected/)).toBeVisible();
+
+  await page.route("**/api/topology/export?*", (route) => route.fulfill({
+    status: 409,
+    json: { error: { code: "snapshot_revision_mismatch", message: "The selected snapshot revision is no longer current." } },
+  }), { times: 1 });
+  await exportButton.press("Enter");
+  await expect(page.getByRole("alert")).toHaveText("This capture changed or expired. Refresh it before exporting.");
+  await page.getByRole("button", { name: "Refresh capture", exact: true }).press("Enter");
+  await expect(exportButton).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 for (const width of [1440, 1024]) {
@@ -228,7 +269,7 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   );
   await page.goto("/");
 
-  const picker = page.getByRole("combobox", { name: "Analysis" });
+  const picker = page.getByRole("combobox", { name: "Capture" });
   await expect(page).toHaveTitle("RabbitMQ Topology Analyzer");
   await expect(picker).toHaveValue("static:e2e-static-cycle");
   await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
@@ -270,6 +311,15 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   await expect(picker).toHaveValue("session:e2e-session-cycle");
   await expect(page.locator(".topology-canvas")).toHaveAttribute("data-layout-state", "ready");
   await expect(page.getByText("Definitions only")).toBeVisible();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export topology as JSON" }).click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toBe("e2e-session-cycle.topology.json");
+  expect(JSON.parse(await readFile(await download.path(), "utf8"))).toMatchObject({
+    source: "session",
+    analysisId: "e2e-session-cycle",
+    label: "E2E session cycle",
+  });
 
   const startResponse = page.waitForResponse((response) =>
     isApiResponse(response, "POST", "/api/scc-runs"),
@@ -288,12 +338,12 @@ test("serves the production app through FastAPI and completes a real SDK workflo
   await expect(results.getByText("1 cyclic component found.")).toBeVisible({ timeout: 20_000 });
   const component = results.getByRole("checkbox", { name: /Cyclic component 1/ });
   await component.check();
-  await expect(page.getByRole("button", { name: "Clear component focus" })).toBeVisible();
+  await expect(results.getByRole("button", { name: "Clear component filter" })).toBeVisible();
 });
 
 test("replaces a capture at the five-slot limit and uploads again after deletion", async ({ page }) => {
   await page.goto("/");
-  const picker = page.getByRole("combobox", { name: "Analysis" });
+  const picker = page.getByRole("combobox", { name: "Capture" });
   const open = page.getByRole("button", { name: "Upload capture" });
   const dialog = page.getByRole("dialog", { name: "Manage captured analysis" });
   const id = dialog.getByLabel("Analysis ID");
@@ -429,7 +479,7 @@ test("explores a large upload without mounting the entire graph", async ({ page 
   const inspector = canvas.getByRole("button", { name: /Inspect binding.*routing key loop-second$/ });
   await inspector.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("region", { name: "Safe details" }).getByText("loop-second", { exact: true }))
+  await expect(page.getByRole("region", { name: "Relationship details" }).getByText("loop-second", { exact: true }))
     .toBeVisible();
 
   // Search and the overview use the moved geometry while preserving layout.
@@ -637,7 +687,7 @@ test("explains focused scope and restores exploration while retaining real SDK r
   await expect(mode).toBeInViewport();
   await expect(mode).toContainText("Component focus: Cyclic component 1");
   await expect(mode).toContainText("overrides vhost scope: 2 resources");
-  await page.getByRole("button", { name: "Clear component filter" }).click();
+  await mode.getByRole("button", { name: "Clear component filter" }).click();
   await expect(mode).toContainText("Exploration view");
   await expect(page.getByText(/No vhosts selected/)).toBeVisible();
   expect(topologyRequests).toBe(1);
@@ -683,17 +733,17 @@ test("explains focused scope and restores exploration while retaining real SDK r
   const edgeId = await shovelEdge.getAttribute("data-edge-id");
   await shovelEdge.click();
   await page.getByRole("button", { name: /^Details: relationship/ }).click();
-  const details = page.getByRole("region", { name: "Safe details" });
+  const details = page.getByRole("region", { name: "Relationship details" });
   await expect(details.locator(".relationship-summary")).toHaveText("shovel shovel3.ab in vhost topology-demo.control → exchange shovel3.in in vhost topology-demo.region-b");
   await expect(details.locator(".relationship-summary")).toBeInViewport();
   await expect(details.getByText(edgeId!, { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("shovel-relationship-details.png") });
   await toggle.click();
-  await page.getByRole("button", { name: "Clear cycle filter" }).click();
+  await mode.getByRole("button", { name: "Clear cycle filter" }).click();
   await layoutReady(page);
   await expect(mode).toContainText("Component focus: Cyclic component 1");
   await expect(canvas).toHaveAttribute("data-layout-node-count", "9");
-  await page.getByRole("button", { name: "Clear component filter" }).click();
+  await mode.getByRole("button", { name: "Clear component filter" }).click();
   await layoutReady(page);
   await expect(mode).toContainText("Exploration view");
   await expect(mode).not.toContainText("overrides");
@@ -759,7 +809,7 @@ for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 
     expect(await camera.evaluate((element) => element.style.transform)).toBe(transform);
 
     await openCycles.click();
-    await path.getByRole("button", { name: "Clear cycle focus" }).click();
+    await path.getByRole("button", { name: "Clear cycle filter" }).click();
     await expect(graphFocus).toBeFocused();
     await expect(graph).toBeInViewport({ ratio: 0.95 });
     const mode = page.getByRole("region", { name: "Graph presentation" });
@@ -770,7 +820,7 @@ for (const viewport of [{ width: 1024, height: 640 }, { width: 390, height: 700 
     const openComponents = graphControls.getByRole("button", { name: "Components (1)", exact: true });
     await openComponents.click();
     await expect(component).toBeChecked();
-    const clearComponent = drawer.getByRole("button", { name: "Clear component focus" });
+    const clearComponent = drawer.getByRole("button", { name: "Clear component filter" });
     await clearComponent.focus();
     await page.keyboard.press("Enter");
     await expect(graphFocus).toBeFocused();
@@ -804,7 +854,7 @@ for (const motion of ["reduce", "no-preference"] as const) {
     await expect(parallel).toHaveCount(2);
     const ids = await parallel.evaluateAll((buttons) => buttons.map((button) => button.getAttribute("data-edge-id")));
     expect(new Set(ids).size).toBe(2);
-    const details = page.getByRole("region", { name: "Safe details" });
+    const details = page.getByRole("region", { name: "Relationship details" });
     for (const [index, id] of ids.entries()) {
       const button = canvas.locator(`.edge-inspect-button[data-edge-id="${id}"]`);
       await expect(button).toHaveCSS("opacity", "1");

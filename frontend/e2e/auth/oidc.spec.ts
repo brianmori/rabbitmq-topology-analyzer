@@ -163,7 +163,7 @@ test("preserves private uploads and both SDK results across real server-side ref
     await readyGraph(page);
     await expect(
       page
-        .getByRole("combobox", { name: "Analysis" })
+        .getByRole("combobox", { name: "Capture" })
         .getByRole("option", { name: /oidc-refresh-owned/ }),
     ).toHaveCount(1);
     const runQuery = `?snapshot_revision=${encodeURIComponent(scc.snapshotRevision)}`;

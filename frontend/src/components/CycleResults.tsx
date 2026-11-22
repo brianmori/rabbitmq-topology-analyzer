@@ -8,6 +8,7 @@ import type {
 } from "../types/topology";
 
 interface CycleResultsProps {
+  canRun: boolean;
   completedRun: CycleRunResponse | null;
   runStatusText: string;
   page: CyclePage | null;
@@ -47,6 +48,7 @@ function edgeDescription(edge: TopologyEdge | undefined, edgeId: string): string
 }
 
 export function CycleResults({
+  canRun,
   completedRun,
   runStatusText,
   page,
@@ -77,13 +79,18 @@ export function CycleResults({
         <div>
           <h3 id="cycle-results-heading">Structural cycles</h3>
           <p className="muted">
-            Exact SDK paths through configured possible hops; not proof of a runtime message loop.
+            A structural cycle is a configured route that returns to its starting resource. If an
+            exchange routes to two queues and both queues have dead-letter routes back to it, each
+            round trip is a separate cycle. Actual message flow depends on runtime conditions.
           </p>
         </div>
       </div>
 
       <p className="operation-status">{runStatusText}</p>
 
+      {canRun && !completedRun && !runStatusText && (
+        <p className="result-empty">Choose Run structural cycles in Operations to see results here.</p>
+      )}
       {result && (
         <>
           {result.truncated && (
@@ -196,7 +203,7 @@ export function CycleResults({
               Show cycle on graph
             </button>
             <button type="button" className="text-button" onClick={onClearFocus}>
-              Clear cycle focus
+              Clear cycle filter
             </button>
           </div>
           <ol>
