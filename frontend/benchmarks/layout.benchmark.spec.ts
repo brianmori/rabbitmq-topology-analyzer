@@ -239,7 +239,7 @@ test("chooses repeated queue names by vhost using the keyboard without relayout 
   await page.keyboard.press("Enter");
   const match = fixture.nodes.find((node) => node.data.kind === "queue"
     && node.data.name === "queue-00" && node.data.vhost === "vhost-37")!;
-  const details = page.getByRole("region", { name: "Safe details" });
+  const details = page.getByRole("region", { name: "Resource details" });
   await expect(details.getByText("vhost-37", { exact: true })).toBeVisible();
   await expect(details.getByText(match.id, { exact: true })).toBeVisible();
   const node = page.getByRole("button", { name: "Inspect queue queue-00, vhost vhost-37", exact: true });

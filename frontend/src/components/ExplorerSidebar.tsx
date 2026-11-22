@@ -96,7 +96,7 @@ export function ExplorerSidebar({
     cycleRunStatus === "queued" || cycleRunStatus === "running" || cycleRunStatus === "cancelling";
   return (
     <aside className="operations-sidebar" aria-label="Topology exploration controls">
-      <button type="button" className="text-button" onClick={onReturnToGraph}>
+      <button type="button" className="text-button sidebar-return-to-graph" onClick={onReturnToGraph}>
         Return to graph
       </button>
       <section className="sidebar-section">
@@ -220,9 +220,17 @@ export function ExplorerSidebar({
         </p>
         {access.capabilities.runGraphOperations ? (
           <div className="operation-controls">
-            <button type="button" aria-disabled={computeRunActive} onClick={onStartScc}>
+            <button
+              type="button"
+              aria-describedby="run-components-hint"
+              aria-disabled={computeRunActive}
+              onClick={onStartScc}
+            >
               {sccActive ? "Cyclic components running…" : "Run cyclic components"}
             </button>
+            <p id="run-components-hint" className="field-hint">
+              Find groups of resources that can all reach each other.
+            </p>
             <button type="button" className="text-button" onClick={onShowComponents}>
               Open components
             </button>
@@ -243,7 +251,7 @@ export function ExplorerSidebar({
               </button>
             )}
             <label className="field-label" htmlFor="max-cycles">
-              Maximum cycles
+              Single-vhost cycle limit
             </label>
             <input
               id="max-cycles"
@@ -258,13 +266,13 @@ export function ExplorerSidebar({
               onChange={(event) => onCycleMaxCyclesChange(event.target.value)}
             />
             <p id="max-cycles-hint" className="field-hint">
-              A positive value bounds SDK enumeration. Zero enumerates all cycles. Structural cycles
-              are configured paths; they do not prove runtime loops or guarantee delivery.
+              One shared limit across all vhosts. Enter 0 for no limit. Cycles that span multiple
+              vhosts are always included.
             </p>
             {cycleMaxCyclesUnbounded && !cycleMaxCyclesError && (
               <p className="result-warning" role="alert">
-                Zero enumerates all cycles and may require substantial time or memory. Keep this tab
-                open so heartbeat polling continues.
+                Searching without a limit may take a long time or use substantial memory. Keep
+                this tab open while the search runs.
               </p>
             )}
             {cycleMaxCyclesError && (
@@ -274,11 +282,15 @@ export function ExplorerSidebar({
             )}
             <button
               type="button"
+              aria-describedby="run-cycles-hint"
               aria-disabled={computeRunActive || cycleMaxCyclesError !== null}
               onClick={onStartCycle}
             >
               {cycleActive ? "Structural cycles running…" : "Run structural cycles"}
             </button>
+            <p id="run-cycles-hint" className="field-hint">
+              Find individual routes that return to where they started.
+            </p>
             <button type="button" className="text-button" onClick={onShowCycles}>
               Open cycles
             </button>

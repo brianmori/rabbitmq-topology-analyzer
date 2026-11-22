@@ -23,6 +23,7 @@ import {
   topologyVhosts,
 } from "../graph/presentation";
 import {
+  type ActiveCycleRunRecovery,
   clearCycleRecovery,
   readCycleRecovery,
   readStoredCycleRecovery,
@@ -103,9 +104,13 @@ function cycleRunStatusText(
     return `Structural-cycle analysis ${activeRun.status}. Keep this tab open while it runs.`;
   }
   const result = completedRun?.result;
-  return result
-    ? `${result.cycleCount} structural cycle${result.cycleCount === 1 ? "" : "s"} found.${result.truncated ? ` Results were truncated at maxCycles=${result.maxCycles}.` : ""}`
-    : "";
+  if (!result) return "";
+  const count = `${result.cycleCount} structural cycle${result.cycleCount === 1 ? "" : "s"} found.`;
+  if (result.crossVhostCount !== undefined) {
+    const scope = `${result.crossVhostCount} cycle${result.crossVhostCount === 1 ? " spans" : "s span"} multiple vhosts.`;
+    return `${count} ${scope}${result.truncated ? ` Single-vhost results were limited to ${result.maxCycles}.` : ""}`;
+  }
+  return `${count}${result.truncated ? ` Results were truncated at maxCycles=${result.maxCycles}.` : ""}`;
 }
 
 function cyclePageStatusText(
@@ -167,6 +172,7 @@ export function TopologyExplorer({
     () => !window.matchMedia("(max-width: 780px)").matches,
   );
   const graphEntryRef = useRef<HTMLButtonElement>(null);
+  const graphDrawingRef = useRef<HTMLElement>(null);
   const controlsDisclosureRef = useRef<HTMLDetailsElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const focusDrawerRef = useRef(false);
@@ -209,7 +215,7 @@ export function TopologyExplorer({
     }
   }, []);
 
-  function returnToGraph() {
+  function focusGraph(preferFullDrawing = true) {
     if (window.matchMedia("(max-width: 780px)").matches) {
       // Close the native disclosure before positioning the page, including
       // when the browser still has an opening toggle event queued.
@@ -218,8 +224,27 @@ export function TopologyExplorer({
       setControlsOpen(false);
     }
     const entry = graphEntryRef.current;
+    const toolbar = entry?.parentElement;
+    const drawing = graphDrawingRef.current;
+    // When the controls and drawing cannot fit together, bring the drawing
+    // into view and keep keyboard focus inside the visible part of the page.
+    if (
+      preferFullDrawing &&
+      toolbar &&
+      drawing &&
+      drawing.getBoundingClientRect().bottom - toolbar.getBoundingClientRect().top > window.innerHeight
+    ) {
+      drawing.focus({ preventScroll: true });
+      drawing.scrollIntoView?.({ block: "start", inline: "nearest" });
+      return;
+    }
     entry?.focus({ preventScroll: true });
-    entry?.parentElement?.scrollIntoView?.({ block: "start", inline: "nearest" });
+    toolbar?.scrollIntoView?.({ block: "start", inline: "nearest" });
+  }
+
+  function returnToGraph() {
+    setDrawerOpen(false);
+    focusGraph();
   }
   const [activeSccRun, setActiveSccRun] = useState<SccRunResponse | null>(null);
   const [completedSccRun, setCompletedSccRun] = useState<SccRunResponse | null>(null);
@@ -246,7 +271,6 @@ export function TopologyExplorer({
   const [cyclePageResult, setCyclePageResult] = useState<CyclePageResult | null>(null);
   const [cycleOffset, setCycleOffset] = useState(0);
   const [cycleSort, setCycleSort] = useState<CycleSort>("sdk");
-  const [cycleVhosts, setCycleVhosts] = useState<ReadonlySet<string>>(new Set());
   const [cycleMinLength, setCycleMinLength] = useState("");
   const [cycleMaxLength, setCycleMaxLength] = useState("");
   const [selectedCycleDetail, setSelectedCycleDetail] = useState<CycleDetail | null>(null);
@@ -258,7 +282,9 @@ export function TopologyExplorer({
   const [cycleRequestPaused, setCycleRequestPaused] = useState(false);
   const [cancellationPending, setCancellationPending] = useState<string | null>(null);
   const activeIdempotencyKey = useRef<string | null>(null);
-  const activeCycleMaxCycles = useRef(20);
+  const activeCycleOptions = useRef<Pick<ActiveCycleRunRecovery, "maxCycles" | "includeAllCrossVhost">>({
+    maxCycles: 20,
+  });
   const cancellingRunId = useRef<string | null>(null);
   const cycleDetailGeneration = useRef(0);
   const currentCycleResultId = useRef<string | null>(null);
@@ -328,7 +354,6 @@ export function TopologyExplorer({
     topology.snapshotRevision,
     cycleOffset,
     cycleSort,
-    [...cycleVhosts].sort(),
     parsedMinLength,
     parsedMaxLength,
   ]);
@@ -563,7 +588,7 @@ export function TopologyExplorer({
             source: topology.source,
             analysisId: topology.analysisId,
             snapshotRevision: topology.snapshotRevision,
-            maxCycles: run.result?.maxCycles ?? activeCycleMaxCycles.current,
+            ...activeCycleOptions.current,
             idempotencyKey,
             runId: run.runId,
           });
@@ -581,6 +606,11 @@ export function TopologyExplorer({
         cycleDetailGeneration.current += 1;
         setCompletedCycleRun(run);
         setCycleOffset(0);
+        if (run.result?.crossVhostCount !== undefined) {
+          setCycleSort("sdk");
+          setCycleMinLength("");
+          setCycleMaxLength("");
+        }
         setCyclePageResult(null);
         setSelectedCycleDetail(null);
         setCycleDetailLoading(false);
@@ -726,7 +756,10 @@ export function TopologyExplorer({
     const controller = new AbortController();
     const lifetime = requestLifetime.current;
     activeIdempotencyKey.current = recovery.idempotencyKey;
-    activeCycleMaxCycles.current = recovery.maxCycles;
+    activeCycleOptions.current = {
+      maxCycles: recovery.maxCycles,
+      includeAllCrossVhost: recovery.includeAllCrossVhost,
+    };
     const recover = () =>
       recovery.runId
         ? fetchCycleRun(recovery.runId, topology.snapshotRevision)
@@ -736,6 +769,7 @@ export function TopologyExplorer({
             topology.snapshotRevision,
             recovery.maxCycles,
             recovery.idempotencyKey,
+            recovery.includeAllCrossVhost,
           );
     void requestOperation(
       recover,
@@ -940,7 +974,7 @@ export function TopologyExplorer({
     if (computeRunActive || parsedMaxCycles === null || !isRequestCurrent(lifetime)) return;
     const idempotencyKey = browserUuid();
     activeIdempotencyKey.current = idempotencyKey;
-    activeCycleMaxCycles.current = parsedMaxCycles;
+    activeCycleOptions.current = { maxCycles: parsedMaxCycles, includeAllCrossVhost: true };
     setStartingCycle(true);
     setDrawerTab("Cycles");
     setCycleError(null);
@@ -950,6 +984,7 @@ export function TopologyExplorer({
       analysisId: topology.analysisId,
       snapshotRevision: topology.snapshotRevision,
       maxCycles: parsedMaxCycles,
+      includeAllCrossVhost: true,
       idempotencyKey,
       runId: null,
     } as const;
@@ -962,6 +997,7 @@ export function TopologyExplorer({
           topology.snapshotRevision,
           parsedMaxCycles,
           idempotencyKey,
+          recovery.includeAllCrossVhost,
         ).then((run) => {
           if (isRequestCurrent(lifetime)) applyCycleRun(run);
           return run;
@@ -1045,7 +1081,6 @@ export function TopologyExplorer({
       offset: cycleOffset,
       limit: 50,
       sort: cycleSort,
-      vhosts: [...cycleVhosts],
       minLength: parsedMinLength ?? undefined,
       maxLength: parsedMaxLength ?? undefined,
     })
@@ -1090,7 +1125,6 @@ export function TopologyExplorer({
     cycleMinLength,
     cycleOffset,
     cycleSort,
-    cycleVhosts,
     isRequestCurrent,
     parsedMaxLength,
     parsedMinLength,
@@ -1178,12 +1212,12 @@ export function TopologyExplorer({
 
   function clearCycleFocusAndShowGraph() {
     clearCycleFocus();
-    returnToGraph();
+    focusGraph();
   }
 
   function clearComponentFocusAndShowGraph() {
     setSelectedComponentIndexes(new Set());
-    returnToGraph();
+    focusGraph();
   }
 
   const emptyReason =
@@ -1315,28 +1349,30 @@ export function TopologyExplorer({
           <GraphLegend
             focus={cycleFocusActive ? "cycle" : sccFocusActive ? "components" : "explore"}
           />
-          {emptyReason ? (
-            <div className="topology-canvas canvas-empty" role="status">
-              <div>
-                <span aria-hidden="true">⌁</span>
-                <h2>Nothing to display</h2>
-                <p>{emptyReason}</p>
+          <section ref={graphDrawingRef} aria-label="Topology drawing" tabIndex={-1}>
+            {emptyReason ? (
+              <div className="topology-canvas canvas-empty" role="status">
+                <div>
+                  <span aria-hidden="true">⌁</span>
+                  <h2>Nothing to display</h2>
+                  <p>{emptyReason}</p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <TopologyCanvas
-              topology={visibleTopology}
-              searchMatchIds={searchMatchIds}
-              searchFocus={searchFocus}
-              selection={selection}
-              onSelectionChange={inspect}
-              onExitCanvas={returnToGraph}
-              resetGeneration={resetGeneration}
-              componentIndexByNode={visibleComponentByNode}
-              cycleStepByNode={visibleCycleSteps.nodes}
-              cycleStepByEdge={visibleCycleSteps.edges}
-            />
-          )}
+            ) : (
+              <TopologyCanvas
+                topology={visibleTopology}
+                searchMatchIds={searchMatchIds}
+                searchFocus={searchFocus}
+                selection={selection}
+                onSelectionChange={inspect}
+                onExitCanvas={() => focusGraph(false)}
+                resetGeneration={resetGeneration}
+                componentIndexByNode={visibleComponentByNode}
+                cycleStepByNode={visibleCycleSteps.nodes}
+                cycleStepByEdge={visibleCycleSteps.edges}
+              />
+            )}
+          </section>
           <section
             ref={drawerRef}
             className={`results-drawer${drawerOpen ? " results-drawer--open" : ""}`}
@@ -1410,6 +1446,7 @@ export function TopologyExplorer({
                   hidden={drawerTab !== "Components"}
                 >
                   <SccResults
+                    canRun={access.capabilities.runGraphOperations}
                     completedRun={completedSccRun}
                     statusText={currentSccStatusText}
                     selectedComponentIndexes={selectedComponentIndexes}
@@ -1435,13 +1472,12 @@ export function TopologyExplorer({
                   hidden={drawerTab !== "Cycles"}
                 >
                   <CycleResults
+                    canRun={access.capabilities.runGraphOperations}
                     completedRun={completedCycleRun}
                     runStatusText={currentCycleRunStatusText}
                     page={cyclePage}
                     pageLoading={cyclePageLoading}
                     pageStatusText={currentCyclePageStatusText}
-                    availableVhosts={vhosts}
-                    selectedVhosts={cycleVhosts}
                     sort={cycleSort}
                     minLength={cycleMinLength}
                     maxLength={cycleMaxLength}
@@ -1449,15 +1485,6 @@ export function TopologyExplorer({
                     detailStatusText={currentCycleDetailStatusText}
                     nodes={topology.nodes}
                     edges={topology.edges}
-                    onVhostChange={(vhost, selected) => {
-                      setCycleOffset(0);
-                      setCycleVhosts((current) => {
-                        const next = new Set(current);
-                        if (selected) next.add(vhost);
-                        else next.delete(vhost);
-                        return next;
-                      });
-                    }}
                     onSortChange={(sort) => {
                       setCycleOffset(0);
                       setCycleSort(sort);

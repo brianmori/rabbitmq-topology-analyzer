@@ -167,7 +167,7 @@ describe("App", () => {
     await screen.findByLabelText("RabbitMQ topology graph");
 
     const provenance = screen.getByRole("group", { name: "Selected snapshot" });
-    const picker = screen.getByRole("combobox", { name: "Analysis" });
+    const picker = screen.getByRole("combobox", { name: "Capture" });
     expect(picker).toHaveAccessibleDescription("Loaded in app: 2026-08-10 08:00:00 UTC");
     expect(within(provenance).getByText("2026-08-10 08:00:00 UTC")).toHaveAttribute(
       "datetime", first.loadedAt,
@@ -291,7 +291,7 @@ describe("App", () => {
     expect(screen.getByText(/configured identity provider/i)).toBeVisible();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/auth/session");
-    expect(screen.queryByRole("combobox", { name: "Analysis" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Capture" })).not.toBeInTheDocument();
   });
 
   it("re-bootstraps after an expired OIDC cookie is cleared and settles in sign-in", async () => {
@@ -457,7 +457,7 @@ describe("App", () => {
       "/api/auth/oidc/login",
     );
     expect(screen.queryByLabelText("RabbitMQ topology graph")).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Analysis" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Capture" })).not.toBeInTheDocument();
     expect(sessionStorage.getItem(ACTIVE_SCC_RUN_STORAGE_KEY)).toBeNull();
     expect(sessionStorage.getItem(ACTIVE_CYCLE_RUN_STORAGE_KEY)).toBeNull();
   });
@@ -731,7 +731,7 @@ describe("App", () => {
 
     expect(screen.getByText("RabbitMQ Topology Analyzer")).toBeVisible();
     expect(await screen.findByText("Complete capture")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
       "static:orders-production",
     );
     expect(screen.getByLabelText("RabbitMQ topology graph")).toHaveTextContent("orders.events");
@@ -793,7 +793,7 @@ describe("App", () => {
     );
 
     render(<App />);
-    const picker = await screen.findByRole("combobox", { name: "Analysis" });
+    const picker = await screen.findByRole("combobox", { name: "Capture" });
     await user.selectOptions(picker, "static:billing-production");
 
     expect(await screen.findByText(/Rendered resources: billing\.queue/)).toBeVisible();
@@ -814,7 +814,7 @@ describe("App", () => {
     });
     render(<App />);
 
-    const picker = await screen.findByRole("combobox", { name: "Analysis" });
+    const picker = await screen.findByRole("combobox", { name: "Capture" });
     picker.focus();
     await user.tab();
     expect(screen.getByText("Revision:")).toHaveFocus();
@@ -922,7 +922,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByLabelText("RabbitMQ topology graph")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
       "session:session-capture",
     );
     await waitFor(() =>
@@ -963,7 +963,7 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByLabelText("RabbitMQ topology graph")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
       "static:orders-production",
     );
     expect(screen.getByRole("button", { name: "Upload capture" })).toBeEnabled();
@@ -1015,7 +1015,7 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+      expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
         "session:session-capture",
       );
     });
@@ -1076,7 +1076,7 @@ describe("App", () => {
       "datetime", analysis.loadedAt,
     );
     expect(within(provenance).getByText(analysis.snapshotRevision)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Clear component focus" })).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Cyclic components" })).getByRole("button", { name: "Clear component filter" })).toBeVisible();
     expect(
       fetchMock.mock.calls.filter(
         ([url]) => url === "/api/topology?source=session&analysis_id=session-capture",
@@ -1180,7 +1180,7 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
 
     expect(await screen.findByRole("article", { name: "Cycle 2 path" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Clear cycle focus" })).toBeVisible();
+    expect(within(screen.getByRole("article", { name: "Cycle 2 path" })).getByRole("button", { name: "Clear cycle filter" })).toBeVisible();
     expect(sessionStorage.getItem(ACTIVE_CYCLE_RUN_STORAGE_KEY)).toBe("identical-cycle-recovery");
     expect(
       fetchMock.mock.calls.filter(
@@ -1246,7 +1246,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Upload capture" }));
     await user.click(screen.getByRole("button", { name: "Delete capture" }));
 
-    expect(await screen.findByText("No analyses configured")).toBeVisible();
+    expect(await screen.findByText("No captures available")).toBeVisible();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/analyses")).toHaveLength(1);
   });
 
@@ -1281,7 +1281,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByLabelText("RabbitMQ topology graph");
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Analysis" }),
+      screen.getByRole("combobox", { name: "Capture" }),
       "session:session-capture",
     );
 
@@ -1291,7 +1291,7 @@ describe("App", () => {
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/catalogue was refreshed/i);
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
-    expect(screen.getByRole("combobox", { name: "Analysis" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "Capture" })).toHaveValue(
       "static:orders-production",
     );
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/analyses")).toHaveLength(2);

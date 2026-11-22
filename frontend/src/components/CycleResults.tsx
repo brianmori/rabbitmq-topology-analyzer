@@ -8,13 +8,12 @@ import type {
 } from "../types/topology";
 
 interface CycleResultsProps {
+  canRun: boolean;
   completedRun: CycleRunResponse | null;
   runStatusText: string;
   page: CyclePage | null;
   pageLoading: boolean;
   pageStatusText: string;
-  availableVhosts: ReadonlyArray<string>;
-  selectedVhosts: ReadonlySet<string>;
   sort: CycleSort;
   minLength: string;
   maxLength: string;
@@ -22,7 +21,6 @@ interface CycleResultsProps {
   detailStatusText: string;
   nodes: ReadonlyArray<TopologyNode>;
   edges: ReadonlyArray<TopologyEdge>;
-  onVhostChange: (vhost: string, selected: boolean) => void;
   onSortChange: (sort: CycleSort) => void;
   onMinLengthChange: (value: string) => void;
   onMaxLengthChange: (value: string) => void;
@@ -50,13 +48,12 @@ function edgeDescription(edge: TopologyEdge | undefined, edgeId: string): string
 }
 
 export function CycleResults({
+  canRun,
   completedRun,
   runStatusText,
   page,
   pageLoading,
   pageStatusText,
-  availableVhosts,
-  selectedVhosts,
   sort,
   minLength,
   maxLength,
@@ -64,7 +61,6 @@ export function CycleResults({
   detailStatusText,
   nodes,
   edges,
-  onVhostChange,
   onSortChange,
   onMinLengthChange,
   onMaxLengthChange,
@@ -83,19 +79,25 @@ export function CycleResults({
         <div>
           <h3 id="cycle-results-heading">Structural cycles</h3>
           <p className="muted">
-            Exact SDK paths through configured possible hops; not proof of a runtime message loop.
+            A structural cycle is a configured route that returns to its starting resource. If an
+            exchange routes to two queues and both queues have dead-letter routes back to it, each
+            round trip is a separate cycle. Actual message flow depends on runtime conditions.
           </p>
         </div>
       </div>
 
       <p className="operation-status">{runStatusText}</p>
 
+      {canRun && !completedRun && !runStatusText && (
+        <p className="result-empty">Choose Run structural cycles in Operations to see results here.</p>
+      )}
       {result && (
         <>
           {result.truncated && (
             <p className="result-warning">
-              The SDK stopped after the configured maximum. These are exact returned cycles, but
-              more cycles may exist.
+              {result.crossVhostCount === undefined
+                ? "The SDK stopped at the configured maximum, and more cycles may exist."
+                : "More single-vhost cycles exist. The cross-vhost results are complete."}
             </p>
           )}
           <div className="cycle-filter-grid">
@@ -105,7 +107,9 @@ export function CycleResults({
                 value={sort}
                 onChange={(event) => onSortChange(event.target.value as CycleSort)}
               >
-                <option value="sdk">SDK order</option>
+                <option value="sdk">
+                  {result.crossVhostCount === undefined ? "SDK order" : "Cross-vhost first"}
+                </option>
                 <option value="length_asc">Length, shortest first</option>
                 <option value="length_desc">Length, longest first</option>
               </select>
@@ -133,23 +137,6 @@ export function CycleResults({
               />
             </label>
           </div>
-          <fieldset className="cycle-vhost-filter">
-            <legend>Touches vhost</legend>
-            <p className="field-hint">No selection includes every vhost.</p>
-            <div className="checkbox-list">
-              {availableVhosts.map((vhost) => (
-                <label key={vhost}>
-                  <input
-                    type="checkbox"
-                    checked={selectedVhosts.has(vhost)}
-                    onChange={(event) => onVhostChange(vhost, event.target.checked)}
-                  />
-                  <span>{vhost}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
           <p className="operation-status">{pageStatusText}</p>
 
           {page && page.items.length === 0 && !pageLoading && (
@@ -216,7 +203,7 @@ export function CycleResults({
               Show cycle on graph
             </button>
             <button type="button" className="text-button" onClick={onClearFocus}>
-              Clear cycle focus
+              Clear cycle filter
             </button>
           </div>
           <ol>

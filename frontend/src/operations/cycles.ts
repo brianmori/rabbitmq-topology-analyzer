@@ -8,6 +8,7 @@ export interface ActiveCycleRunRecovery {
   analysisId: string;
   snapshotRevision: string;
   maxCycles: number;
+  includeAllCrossVhost?: boolean;
   idempotencyKey: string;
   runId: string | null;
 }
@@ -26,6 +27,7 @@ export function readStoredCycleRecovery(): ActiveCycleRunRecovery | null {
       typeof value.maxCycles !== "number" ||
       !Number.isSafeInteger(value.maxCycles) ||
       value.maxCycles < 0 ||
+      (value.includeAllCrossVhost !== undefined && typeof value.includeAllCrossVhost !== "boolean") ||
       typeof value.idempotencyKey !== "string" ||
       (value.runId !== null && typeof value.runId !== "string")
     ) {

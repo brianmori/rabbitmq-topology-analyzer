@@ -21,7 +21,7 @@ from cycles.schemas import (
 from jobs.models import AnalysisRun, OperationKind, ResultEnvelopeContext, RunStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
     from typing import BinaryIO
 
     from jobs.results import ResultRepository
@@ -53,14 +53,21 @@ def _record_bytes(record: StoredCycle | StoredCycleSummary) -> bytes:
 def _validate_encode_context(
     context: ResultEnvelopeContext,
     cycles: Sequence[StoredCycle],
-    max_cycles: int,
+    result: CycleRunResult,
 ) -> None:
     if context.operation is not OperationKind.STRUCTURAL_CYCLES:
         raise ValueError("cycle result context has the wrong operation")
-    if dict(context.parameters) != {"maxCycles": max_cycles}:
-        raise ValueError("cycle result parameters do not match maxCycles")
+    if context.parameters != _cycle_parameters(result):
+        raise ValueError("cycle result parameters do not match the completed result")
     if any(cycle.cycle_index != index for index, cycle in enumerate(cycles)):
         raise ValueError("stored cycles are not in original SDK index order")
+
+
+def _cycle_parameters(result: CycleRunResult) -> Mapping[str, str | int | bool | None]:
+    parameters: dict[str, str | int | bool | None] = {"maxCycles": result.max_cycles}
+    if result.cross_vhost_count is not None:
+        parameters["includeAllCrossVhost"] = True
+    return parameters
 
 
 def encode_cycle_result(
@@ -69,9 +76,16 @@ def encode_cycle_result(
     *,
     truncated: bool,
     max_cycles: int,
+    cross_vhost_count: int | None = None,
 ) -> bytes:
     """Encode metadata, fixed-width indexes, and JSON records into one file."""
-    _validate_encode_context(context, cycles, max_cycles)
+    result = CycleRunResult(
+        cycle_count=len(cycles),
+        truncated=truncated,
+        max_cycles=max_cycles,
+        cross_vhost_count=cross_vhost_count,
+    )
+    _validate_encode_context(context, cycles, result)
 
     metadata = (
         StoredCycleMetadataEnvelope(
@@ -81,11 +95,7 @@ def encode_cycle_result(
             analysis_id=context.analysis_id,
             snapshot_revision=context.snapshot_revision,
             parameters=dict(context.parameters),
-            result=CycleRunResult(
-                cycle_count=len(cycles),
-                truncated=truncated,
-                max_cycles=max_cycles,
-            ),
+            result=result,
         )
         .model_dump_json(by_alias=True)
         .encode()
@@ -204,7 +214,7 @@ def _validate_run_metadata(
         envelope.source is not run.source
         or envelope.analysis_id != run.analysis_id
         or envelope.snapshot_revision != run.snapshot_revision
-        or envelope.parameters != {"maxCycles": envelope.result.max_cycles}
+        or envelope.parameters != _cycle_parameters(envelope.result)
     ):
         raise ValueError("committed cycle result metadata does not match its run")
 

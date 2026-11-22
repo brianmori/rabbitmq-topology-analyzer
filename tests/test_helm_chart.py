@@ -51,7 +51,8 @@ def test_default_deployment_preserves_process_ownership_and_capacity() -> None:
     [container] = pod["containers"]
     assert container["command"] == ["python", "-m", "uvicorn", "main:app"]
     assert container["args"] == ["--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
-    assert container["image"] == "ghcr.io/brianmori/rabbitmq-topology-analyzer:0.1.0"
+    app_version = yaml.safe_load((CHART / "Chart.yaml").read_text())["appVersion"]
+    assert container["image"] == f"ghcr.io/brianmori/rabbitmq-topology-analyzer:{app_version}"
     assert container["securityContext"] == {
         "allowPrivilegeEscalation": False,
         "readOnlyRootFilesystem": True,

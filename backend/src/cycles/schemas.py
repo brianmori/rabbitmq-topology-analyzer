@@ -55,6 +55,7 @@ class CycleStartRequest(CamelModel):
     analysis_id: str
     snapshot_revision: str = Field(pattern=_REVISION_PATTERN)
     max_cycles: int = Field(default=20, ge=0, strict=True)
+    include_all_cross_vhost: bool = Field(default=False, strict=True)
 
 
 class RunErrorResponse(CamelModel):
@@ -70,6 +71,9 @@ class CycleRunResult(CamelModel):
     cycle_count: int = Field(ge=0)
     truncated: bool
     max_cycles: int = Field(ge=0)
+    cross_vhost_count: int | None = Field(
+        default=None, ge=0, exclude_if=lambda count: count is None
+    )
 
 
 class CycleRunResponse(CamelModel):

@@ -14,6 +14,7 @@ import {
 } from "./api/topology";
 import { CaptureManager } from "./components/CaptureManager";
 import { TopologyExplorer } from "./components/TopologyExplorer";
+import { TopologyExportButton } from "./components/TopologyExportButton";
 import {
   ACTIVE_SCC_RUN_STORAGE_KEY,
   clearSccRecovery,
@@ -724,6 +725,9 @@ function App() {
 
   const analyses = allAnalyses(catalogue);
   const selectedKey = selectedAnalysis ? analysisKey(selectedAnalysis) : "";
+  const topologyKey = topologyState.kind === "ready"
+    ? `${topologyState.topology.source}:${topologyState.topology.analysisId}:${topologyState.topology.snapshotRevision}`
+    : undefined;
 
   return (
     <>
@@ -744,7 +748,17 @@ function App() {
           </div>
 
           <div className="analysis-picker">
-            <label htmlFor="analysis-select">Analysis</label>
+            <div className="analysis-picker__heading">
+              <label htmlFor="analysis-select">Capture</label>
+              {access.capabilities.viewTopology && topologyState.kind === "ready" && (
+                <TopologyExportButton
+                  key={topologyKey}
+                  snapshot={topologyState.topology}
+                  isWorkspaceCurrent={isWorkspaceCurrent}
+                  onRefreshCapture={() => void handleTopologyRetry()}
+                />
+              )}
+            </div>
             <select
               id="analysis-select"
               aria-describedby={selectedAnalysis ? "snapshot-loaded-at" : undefined}
@@ -761,7 +775,7 @@ function App() {
                 }
               }}
             >
-              {analyses.length === 0 && <option value="">No configured analyses</option>}
+              {analyses.length === 0 && <option value="">No captures</option>}
               {catalogue.static.length > 0 && (
                 <optgroup label="Static captures">
                   {catalogue.static.map((analysis) => (
@@ -877,7 +891,7 @@ function App() {
           </main>
         ) : analyses.length === 0 ? (
           <main className="workspace-state">
-            <h1>No analyses configured</h1>
+            <h1>No captures available</h1>
             <p>
               {access.capabilities.manageUploads
                 ? "Upload a session capture or add a static capture manifest to make a topology available."
@@ -906,7 +920,7 @@ function App() {
           </main>
         ) : (
           <TopologyExplorer
-            key={`${topologyState.topology.source}:${topologyState.topology.analysisId}:${topologyState.topology.snapshotRevision}`}
+            key={topologyKey}
             access={access}
             topology={topologyState.topology}
             resetGeneration={resetGeneration}

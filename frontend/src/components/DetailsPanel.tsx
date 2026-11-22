@@ -14,6 +14,7 @@ export function DetailsPanel({ selection, nodes, edges }: DetailsPanelProps) {
     selection?.kind === "node" ? nodes.find((node) => node.id === selection.id) : undefined;
   const selectedEdge =
     selection?.kind === "edge" ? edges.find((edge) => edge.id === selection.id) : undefined;
+  const heading = selectedNode ? "Resource details" : selectedEdge ? "Relationship details" : "Details";
   const rows = selectedNode
     ? safeNodeDetailRows(selectedNode)
     : selectedEdge
@@ -22,7 +23,7 @@ export function DetailsPanel({ selection, nodes, edges }: DetailsPanelProps) {
 
   return (
     <section className="details-panel" aria-labelledby="details-heading">
-      <h3 id="details-heading">Safe details</h3>
+      <h3 id="details-heading">{heading}</h3>
       {selectedEdge && (
         <p className="relationship-summary">{safeEdgeSummary(selectedEdge, nodes)}</p>
       )}

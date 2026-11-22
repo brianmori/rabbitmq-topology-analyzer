@@ -1,12 +1,16 @@
-"""Safe React Flow-shaped topology response schemas."""
+"""Safe topology response and JSON export schemas."""
 
+from datetime import datetime  # noqa: TC003 - Pydantic resolves this field at runtime.
 from enum import StrEnum
 from typing import Literal
 
 from analyses.schemas import ClusterSummary  # noqa: TC001 - Pydantic resolves at runtime.
-from core.query import StrictQuery
+from core.query import SnapshotRevisionQuery, StrictQuery
 from core.schemas import CamelModel
-from core.state import AnalysisSource  # noqa: TC001 - Pydantic resolves this field at runtime.
+from core.state import (  # noqa: TC001 - Pydantic resolves these fields at runtime.
+    AnalysisSource,
+    CaptureCompleteness,
+)
 
 
 class TopologyQuery(StrictQuery):
@@ -14,6 +18,10 @@ class TopologyQuery(StrictQuery):
 
     source: AnalysisSource
     analysis_id: str
+
+
+class TopologyExportQuery(TopologyQuery, SnapshotRevisionQuery):
+    """Select the exact visible snapshot for a download."""
 
 
 class TopologyNodeKind(StrEnum):
@@ -98,13 +106,18 @@ class ShovelNodeData(CommonNodeData):
 type TopologyNodeData = ExchangeNodeData | QueueNodeData | ShovelNodeData
 
 
-class TopologyNode(CamelModel):
-    """One captured or presentation-only missing React Flow node."""
+class GraphNode(CamelModel):
+    """One captured resource or marked placeholder for a missing endpoint."""
 
     id: str
     type: TopologyNodeKind
-    position: GraphPosition
     data: TopologyNodeData
+
+
+class TopologyNode(GraphNode):
+    """A graph node with the position placeholder required by React Flow."""
+
+    position: GraphPosition
 
 
 class TopologyEdgeData(CamelModel):
@@ -132,4 +145,20 @@ class TopologyResponse(CamelModel):
     snapshot_revision: str
     cluster: ClusterSummary
     nodes: tuple[TopologyNode, ...]
+    edges: tuple[TopologyEdge, ...]
+
+
+class TopologyExport(CamelModel):
+    """Versioned safe graph with enough provenance to identify its capture."""
+
+    schema_version: Literal[1] = 1
+    source: AnalysisSource
+    analysis_id: str
+    label: str
+    snapshot_revision: str
+    loaded_at: datetime
+    capture_completeness: CaptureCompleteness
+    cluster: ClusterSummary
+    vhosts: tuple[str, ...]
+    nodes: tuple[GraphNode, ...]
     edges: tuple[TopologyEdge, ...]

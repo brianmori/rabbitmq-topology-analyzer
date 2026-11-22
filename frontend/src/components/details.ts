@@ -46,7 +46,7 @@ function endpointRows(prefix: string, endpoint: SafeShovelEndpoint | null): Deta
 
 export function safeNodeDetailRows(node: TopologyNode): ReadonlyArray<DetailRow> {
   const common: DetailRow[] = [
-    { label: "Wire identity", value: node.id },
+    { label: "Resource ID", value: node.id },
     { label: "Resource kind", value: node.data.kind },
     { label: "Name", value: displayResourceName(node.data.name, node.data.kind) },
     { label: "Vhost", value: displayText(node.data.vhost) },
@@ -122,8 +122,8 @@ export function safeEdgeDetailRows(
     ),
     { label: "Relationship kind", value: edge.data.kind.replaceAll("_", " ") },
     { label: "Routing key", value: displayText(edge.data.routingKey) },
-    { label: "Wire identity", value: edge.id },
-    { label: "Source wire identity", value: edge.source },
-    { label: "Target wire identity", value: edge.target },
+    { label: "Relationship ID", value: edge.id },
+    { label: "Source resource ID", value: edge.source },
+    { label: "Target resource ID", value: edge.target },
   ];
 }

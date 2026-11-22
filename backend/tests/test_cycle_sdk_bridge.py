@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import pytest
 from rabbitmq_management_sdk import ClusterAuditor
 
 from core.session import OwnerContext
@@ -144,13 +145,16 @@ def _auditor(tmp_path: Path) -> ClusterAuditor:
     return ClusterAuditor.from_files(definitions_path=definitions_path)
 
 
-def _context(max_cycles: int) -> ResultEnvelopeContext:
+def _context(max_cycles: int, *, all_cross_vhost: bool = False) -> ResultEnvelopeContext:
+    parameters: dict[str, str | int | bool | None] = {"maxCycles": max_cycles}
+    if all_cross_vhost:
+        parameters["includeAllCrossVhost"] = True
     return ResultEnvelopeContext(
         operation=OperationKind.STRUCTURAL_CYCLES,
         source=AnalysisSource.STATIC,
         analysis_id="cycle-fixture",
         snapshot_revision="sha256:" + "c" * 64,
-        parameters={"maxCycles": max_cycles},
+        parameters=parameters,
     )
 
 
@@ -273,3 +277,45 @@ def test_cycle_bridge_preserves_real_sdk_cross_vhost_shovel_cycle(tmp_path: Path
     assert detail.node_ids == tuple(node_wire_id(node) for node in expected.cycles[0].nodes)
     assert detail.edge_ids == tuple(wire_ids.edge_id(edge) for edge in expected.cycles[0].edges)
     assert {node.vhost for node in expected.cycles[0].nodes} == {"dst", "src"}
+
+
+@pytest.mark.parametrize("max_cycles", [0, 1])
+def test_complete_cross_vhost_cycles_are_included_before_the_local_budget(
+    tmp_path: Path, max_cycles: int
+) -> None:
+    definitions = _cross_vhost_shovel_definitions()
+    parameters = definitions["parameters"]
+    assert isinstance(parameters, list)
+    parameters.append({**parameters[1], "name": "second-return"})
+    single_vhost = _cycle_definitions()
+    for section in ("vhosts", "queues", "exchanges", "bindings"):
+        existing = definitions[section]
+        additional = single_vhost[section]
+        assert isinstance(existing, list) and isinstance(additional, list)
+        definitions[section] = [*existing, *additional]
+    definitions_path = tmp_path / "mixed-cycles.json"
+    definitions_path.write_text(json.dumps(definitions), encoding="utf-8")
+    auditor = ClusterAuditor.from_files(definitions_path)
+    assert len(auditor.structural_cycles(max_cycles=1).cycles[0]) == 2
+
+    context = _context(max_cycles, all_cross_vhost=True)
+    run, repository = _commit_payload(
+        tmp_path,
+        execute_structural_cycles(auditor.topology, context),
+        context,
+    )
+    metadata = read_cycle_metadata(run, repository).result
+    assert metadata.cross_vhost_count == 2
+    assert metadata.cycle_count == 2 + (max_cycles or 2)
+    assert metadata.truncated is bool(max_cycles)
+    details = [read_cycle_detail(run, repository, index) for index in range(metadata.cycle_count)]
+    assert [detail.vhosts for detail in details] == [("dst", "src")] * 2 + [("/",)] * (
+        max_cycles or 2
+    )
+    wire_ids = TopologyWireIds.from_topology(auditor.topology)
+    expected_edges = {
+        tuple(wire_ids.edge_id(edge) for edge in cycle.edges)
+        for cycle in auditor.structural_cycles().cycles
+        if len({node.vhost for node in cycle.nodes}) > 1
+    }
+    assert {detail.edge_ids for detail in details[:2]} == expected_edges

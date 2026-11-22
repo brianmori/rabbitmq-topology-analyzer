@@ -187,6 +187,7 @@ export interface CycleRunResponse {
     cycleCount: number;
     truncated: boolean;
     maxCycles: number;
+    crossVhostCount?: number;
   } | null;
 }
 
