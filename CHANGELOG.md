@@ -1,45 +1,51 @@
 # Changelog
 
-## 0.1.0 — Unreleased
+## 0.1.0 — 2026-11-23
 
-The first development release candidate includes:
+The first release of **RabbitMQ Topology Analyzer** lets you visualize and
+analyze captured RabbitMQ configurations offline.
 
-- Consistent RabbitMQ Topology Analyzer branding, package metadata, runtime
-  defaults, and deployment resource names.
-- Offline static and ephemeral private-capture workspaces, using the published
-  `rabbitmq-management-sdk==0.5.0` as the parsing and graph-analysis authority.
-- Real-SDK integration regressions preserve rejection of invalid capture
-  envelopes, safe atomic startup failure, and failed-replacement snapshot/result
-  retention while accepting empty and older cluster exports.
-- Safe topology exploration with React Flow, compound vhost layout in an ELK
-  Web Worker, search, visibility filters, and keyboard-accessible details.
-- Versioned JSON downloads of the full selected topology, including capture
-  metadata, the snapshot revision, and resources hidden by graph filters.
-- Owner-scoped, cancellable SCC and structural-cycle jobs with bounded worker
-  admission, indexed results, paging, revision guards, and expiry.
-- Structural-cycle searches include every cross-vhost cycle by default. A
-  shared limit caps single-vhost cycles across the capture, with `0` for no limit.
-- Plain-language analysis and upload guidance, more readable cycle paths, and
-  consistent filter actions in the graph and results drawer. Keyboard users
-  can return from results directly to the drawing.
-- Mutually exclusive `none`, OIDC backend-for-frontend, and HTTP Basic modes;
-  centrally enforced viewer/analyst capabilities and private-resource isolation.
-- Browser-bound OIDC login, server-only provider credentials, stable ownership
-  across refresh, pre-body CSRF/upload-role rejection, and exact-owner logout
-  cleanup. Basic password verification has bounded, cancellation-safe capacity.
-- Automated backend, frontend, and real-browser authentication acceptance.
-- A top-level Helm chart for the combined application, with validated capacity
-  settings, optional static captures/Ingress, and existing Basic/OIDC Secrets.
-- Plain HTTP support for `none` mode on trusted private hostnames. Helm normalizes
-  decimal ports when generating the OIDC callback URI.
-- A refreshed Python runtime image and patched locked Python dependencies.
-- Release tooling prepares application versions from a Git tag, including Helm
-  `appVersion`.
+### Added
 
-State deliberately belongs to one replica and one ASGI worker. Restart loses
-private captures, authentication sessions, jobs, and retained results. The
-application never connects to or modifies a live RabbitMQ broker.
+#### Topology and analysis
 
-This is unreleased application metadata, not a publication announcement or an
-SDK release. Final committed-candidate verification, dependency security
-review, deployment acceptance, and publication approval remain separate gates.
+- **Captures** — Open a preconfigured capture or upload a private capture for
+  your session. You can supply queue and exchange observation exports as a pair.
+- **Interactive graph** — Explore resources grouped by vhost, search by name,
+  and filter the drawing. Layout runs in a browser worker. Use the keyboard to
+  inspect resources and relationships or move between the graph and results.
+- **Components and cycles** — Find groups of resources that can reach one
+  another and trace individual round trips. Runs are cancellable, cycle results
+  are paginated, and searches include all cross-vhost cycles by default. A shared
+  limit controls the total single-vhost cycles across the capture.
+- **JSON export** — Download the full selected topology as versioned JSON,
+  including capture metadata, its snapshot revision, and resources hidden by
+  graph filters.
+- **Capture validation** — `rabbitmq-management-sdk` 0.5.0 validates captures
+  and builds their topology. Invalid replacement uploads leave the existing
+  capture and its results available.
+
+#### Authentication and access
+
+- **Authentication modes** — Choose unauthenticated access (`none`), HTTP
+  Basic, or OIDC. Basic password verification has a concurrency limit. OIDC
+  binds login to the initiating browser and keeps provider credentials on the
+  server.
+- **Permissions** — Viewers can inspect topologies and run analyses. Analysts
+  can also manage their own uploads. Private captures and results are scoped to
+  the caller's session.
+
+#### Deployment and operations
+
+- **Helm chart** — Deploy the application with optional Ingress and static
+  captures. Reference existing Kubernetes Secrets for Basic or OIDC. The `none`
+  mode supports plain HTTP on trusted private hosts.
+- **Capacity controls** — Configure analysis worker, queue, and result storage
+  limits. Retained analysis results expire automatically.
+- **Release tooling** — Prepare application versions from a Git tag, including
+  Helm `appVersion`.
+
+> [!NOTE]
+> Run one replica with one ASGI worker. Restarting clears private uploads,
+> application sessions, jobs, and retained results. Configured static captures
+> load again at startup.
